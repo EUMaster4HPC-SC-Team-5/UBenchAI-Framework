@@ -206,9 +206,135 @@ classDiagram
     - **KubernetesOrchestrator**: Native Kubernetes integration with Deployment and Service management. (Initial focus will lay on slurm)
     - **SlurmOrchestrator**: HPC cluster job submission with batch script generation and monitoring
 
-### Class Module
+### Client Module
+The Client Module provides workload generation and benchmarking capabilities against containerized AI services. It handles client lifecycle management, recipe loading, run tracking, orchestration (local or SLURM), health resolution, and metrics collection.
+```mermaid
+classDiagram
+    class ClientManager {
+        -orchestrator: Orchestrator
+        -recipe_loader: ClientRecipeLoader
+        -run_registry: RunRegistry
+        -logger: Logger
+        -health_resolver: HealthResolver
+        +start_client(recipe_name: str, overrides: dict) ClientRun
+        +stop_client(run_id: str) bool
+        +list_available_clients() List~ClientRecipe~
+        +list_running_clients() List~ClientRun~
+        +get_client_status(run_id: str) RunStatus
+        +validate_recipe(recipe_name: str) ValidationReport
+    }
 
+    class ClientRecipe {
+        -name: str
+        -target: TargetSpec
+        -workload: WorkloadSpec
+        -dataset: DatasetSpec
+        -orchestration: OrchestrationSpec
+        -output: OutputSpec
+        -repro: ReproSpec
+        +validate() bool
+        +to_dict() dict
+        +from_yaml(yaml_path: str) ClientRecipe
+    }
+
+    class ClientRun {
+        -id: str
+        -recipe: ClientRecipe
+        -status: RunStatus
+        -created_at: datetime
+        -orchestrator_handle: str
+        -artifacts_dir: str
+        +get_logs() str
+        +get_metrics() dict
+    }
+
+    class ClientRecipeLoader {
+        -recipe_directory: str
+        -cache: dict
+        +load_recipe(name: str) ClientRecipe
+        +validate_recipe(recipe: ClientRecipe) List~ValidationError~
+        +list_available_recipes() List~str~
+        +reload_recipes() bool
+        -parse_yaml(file_path: str) dict
+    }
+
+    class RunRegistry {
+        -runs: dict
+        -run_lock: Lock
+        +register(run: ClientRun) bool
+        +unregister(run_id: str) bool
+        +get(run_id: str) ClientRun
+        +get_all() List~ClientRun~
+        +cleanup_stale_runs() int
+    }
+
+    class Orchestrator {
+        <<interface>>
+        +submit(run: ClientRun) str
+        +stop(handle: str) bool
+        +status(handle: str) RunStatus
+        +stdout(handle: str) str
+    }
+
+    class SlurmOrchestrator {
+        -slurm_client: SlurmClient
+        -job_templates: dict
+        +submit(run: ClientRun) str
+        +stop(handle: str) bool
+        +status(handle: str) RunStatus
+        +stdout(handle: str) str
+    }
+
+    class KubernetesOrchestrator {
+        -k8s_client: ApiClient
+        -namespace: str
+        +submit(run: ClientRun) str
+        +stop(handle: str) bool
+        +status(handle: str) RunStatus
+        +stdout(handle: str) str
+    }
+
+    class HealthResolver {
+        +resolve_endpoint(recipe: ClientRecipe) TargetSpec
+        +read_server_endpoint_file(path: str) TargetSpec
+        +check_connectivity(target: TargetSpec) bool
+    }
+
+    class RunStatus {
+        <<enumeration>>
+        SUBMITTED
+        RUNNING
+        COMPLETED
+        FAILED
+        CANCELED
+        UNKNOWN
+    }
+
+    %% Relationships
+    ClientManager --> ClientRecipeLoader
+    ClientManager --> RunRegistry
+    ClientManager --> Orchestrator
+    ClientManager --> HealthResolver
+    ClientManager --> ClientRun
+    ClientRun --> ClientRecipe
+    ClientRun --> RunStatus
+    Orchestrator <|-- SlurmOrchestrator
+    Orchestrator <|-- KubernetesOrchestrator
+    ClientRecipeLoader --> ClientRecipe
+    RunRegistry --> ClientRun
+```
 #### Core Components
+
+- **ClientManager**: Central orchestration component for managing benchmarking clients. Coordinates recipe loading, run tracking, orchestration, and health validation. Provides CLI commands for start/stop/list/status.  
+- **ClientRecipe**: YAML-based configuration defining workload pattern (open/closed loop), dataset source, target endpoint (HTTP/gRPC/SQL/S3), and orchestration parameters (local/Slurm).  
+- **ClientRun**: Represents a single benchmarking run. Stores recipe, run status, timestamps, orchestrator handle, and output artifacts.  
+- **ClientRecipeLoader**: Manages discovery, parsing, and validation of client recipes from the filesystem. Provides schema validation and error reporting.  
+- **RunRegistry**: Tracks active and historical client runs, supports cleanup, and ensures consistent metadata storage.  
+- **Orchestrator Implementations**  
+  - **SlurmOrchestrator**: Submits and manages benchmarking clients as HPC jobs via SLURM, handling job scripts and status polling.  
+  - **KubernetesOrchestrator**: Provides analogous orchestration for K8s (optional, future extension).  
+- **HealthResolver**: Resolves and validates server endpoints before client execution. Performs connectivity checks to ensure the target is reachable.
+
 
 ### Report Module
 ```mermaid
