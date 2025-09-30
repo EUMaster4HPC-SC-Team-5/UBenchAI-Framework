@@ -196,6 +196,19 @@ classDiagram
     
     RecipeLoader --> ServiceRecipe
 ```
+#### Core Components
+- **ServerManager**: Central orchestration component that manages the complete lifecycle of containerized AI services. Coordinates between recipe loading, service registry, orchestration, and request handling. Integrates directly with both Kubernetes and SLURM environments.
+- **ServiceRegistry**: Registry that tracks all running service instances. Provides service discovery, cleanup of stale services, and access coordination.
+- **ServiceInstance**: Represents a running containerized service with monitoring capabilities.
+- **ServiceRecipe**: YAML-based service configuration defining container images, resource requirements, health checks, and deployment parameters.
+- **RecipeLoader**: Manages discovery, loading, and validation of service recipes from the file system.
+- **Orchestrator Implementations**
+    - **KubernetesOrchestrator**: Native Kubernetes integration with Deployment and Service management. (Initial focus will lay on slurm)
+    - **SlurmOrchestrator**: HPC cluster job submission with batch script generation and monitoring
+
+### Class Module
+
+#### Core Components
 
 ### Report Module
 ```mermaid
@@ -335,16 +348,6 @@ classDiagram
     
     ReportManager --> Report
 ```
-
-#### Core Components
-- **ServerManager**: Central orchestration component that manages the complete lifecycle of containerized AI services. Coordinates between recipe loading, service registry, orchestration, and request handling. Integrates directly with both Kubernetes and SLURM environments.
-- **ServiceRegistry**: Registry that tracks all running service instances. Provides service discovery, cleanup of stale services, and access coordination.
-- **ServiceInstance**: Represents a running containerized service with monitoring capabilities.
-- **ServiceRecipe**: YAML-based service configuration defining container images, resource requirements, health checks, and deployment parameters.
-- **RecipeLoader**: Manages discovery, loading, and validation of service recipes from the file system.
-- **Orchestrator Implementations**
-    - **KubernetesOrchestrator**: Native Kubernetes integration with Deployment and Service management. (Initial focus will lay on slurm)
-    - **SlurmOrchestrator**: HPC cluster job submission with batch script generation and monitoring
 
 ## Technology Stack
 - **Python 3.12**: Primary development language.
