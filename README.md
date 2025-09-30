@@ -336,7 +336,9 @@ classDiagram
 - **HealthResolver**: Resolves and validates server endpoints before client execution. Performs connectivity checks to ensure the target is reachable.
 
 
-### Report Module
+### Monitor Module
+The Monitor Module provides lifecycle management for monitoring instances. It loads recipes, deploys Prometheus collectors, persists metrics for reporting and integrates with Grafana dashboards. It supports both local runs and HPC deployments (Slurm/K8S).
+
 ```mermaid
 classDiagram
     %% Core Monitoring Classes
@@ -474,6 +476,15 @@ classDiagram
     
     ReportManager --> Report
 ```
+
+#### Core Components  
+- **MonitorManager**: Central orchestration component that manages the complete lifecycle of monitoring runs. Coordinates recipe loading, monitor instances, Prometheus/Grafana integration, and metric export.  
+- **MonitorInstance**: Represents a running monitoring session linked to a recipe. Provides status, logs, health checks, and collected metrics.  
+- **MonitorRecipe**: YAML-based configuration defining monitoring targets, collection intervals, retention settings, and exporter options.  
+- **RecipeLoader**: Manages discovery, validation, and loading of monitor recipes from the filesystem.  
+- **PrometheusClient**: Deploys and manages Prometheus instances. Handles scraping configuration, queries, health checks, and metric export to files.  
+- **GrafanaClient**: Deploys Grafana, connects it to Prometheus, and provisions dashboards for visualization.  
+
 
 ## Technology Stack
 - **Python 3.12**: Primary development language.
