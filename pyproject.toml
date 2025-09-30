@@ -1,0 +1,27 @@
+[project]
+name = "ubenchai-framework"
+version = "0.1.0"
+description = "Unified Benchmarking Framework for AI Workflows"
+authors = [
+    {name = "Dennys Huber",email = "dennys.huber@proton.me"}
+]
+readme = "README.md"
+requires-python = "^3.12"
+dependencies = [
+    "pyyaml (>=6.0.3,<7.0.0)",
+    "black (>=25.9.0,<26.0.0)",
+    "loguru (>=0.7.3,<0.8.0)"
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.slurm]
+optional = true
+
+[tool.poetry.group.slurm.dependencies]
+pyslurm = "^18.8.1.1"
