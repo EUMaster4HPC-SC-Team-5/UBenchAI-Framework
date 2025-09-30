@@ -1,5 +1,14 @@
-# UBenchAI-Framework
-Unified Benchmarking Framework for AI Workflows
+# UBenchAI-Framework: Unified Benchmarking Framework for AI Factory Workloads
+
+## Project Overview
+UBenchAI-Framework is a modular benchmarking framework designed to evaluate the performance of AI Factory components on the MeluXina supercomputer. This project is part of the EUMaster4HPC Student Challenge 2025-2026.
+
+**Team 5 Members:**
+- Alberto Taddei (@albtad01)
+- Arianna Amadini (@AriannaAmadini)
+- Dennys Huber (@dnyse)
+- Elizabeth Koleva (@Elizabethvk)
+
 ## Setup and Installation
 
 This project uses [Poetry](https://python-poetry.org/) for dependency management and packaging.
@@ -25,6 +34,7 @@ eval $(poetry env activate)
 
 ### Server Module
 The Server Module provides containerized service management for benchmark workloads using Apptainer containers. It handles service lifecycle management, request routing, and resource orchestration across both local development and HPC cluster environments.
+
 ```mermaid
 classDiagram
     class ServerManager {
@@ -186,6 +196,7 @@ classDiagram
     
     RecipeLoader --> ServiceRecipe
 ```
+
 #### Core Components
 - **ServerManager**: Central orchestration component that manages the complete lifecycle of containerized AI services. Coordinates between recipe loading, service registry, orchestration, and request handling. Integrates directly with both Kubernetes and SLURM environments.
 - **ServiceRegistry**: Registry that tracks all running service instances. Provides service discovery, cleanup of stale services, and access coordination.
@@ -205,3 +216,8 @@ classDiagram
 - **Apptainer/Singularity:** Container runtime optimized for HPC environments
 - **Pyslurm**: Python bindings for SLURM API 
 - **kubernetes**: Official Kubernetes Python client (optional?)
+
+## Acknowledgments
+- EUMaster4HPC Program
+- LuxProvide and MeluXina Supercomputer
+- Dr. Farouk Mansouri for supervision
