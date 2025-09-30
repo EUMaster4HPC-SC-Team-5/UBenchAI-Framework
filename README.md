@@ -485,6 +485,66 @@ classDiagram
 - **Pyslurm**: Python bindings for SLURM API 
 - **kubernetes**: Official Kubernetes Python client (optional?)
 
+## Task Assignment Strategy
+
+### **Dennys Huber** - Server Module Lead
+**Primary Responsibilities:**
+- Lead the Core Server Framework
+- Design ServerManager architecture
+- Define ServiceRecipe YAML format
+- Create ServiceRegistry tracking system
+
+---
+
+### **Alberto Taddei** - Client Module Lead
+**Primary Responsibilities:**
+- Lead the Core Client Framework
+- Design ClientManager architecture
+- Define client benchmark recipes
+- Create workload execution patterns
+
+---
+
+### **Arianna Amadini** - Monitor Module Lead
+**Primary Responsibilities:**
+- Lead the Core Monitor Framework
+- Design monitoring data collection
+- Define metrics storage format
+- Plan Grafana integration approach
+
+---
+
+### **Elizabeth Koleva** - Reporting Module Lead
+**Primary Responsibilities:**
+- Lead the Core Reporting Framework
+- Design report generation system
+- Define report templates
+- Plan visualization approaches
+
+---
+
+## Shared Responsibilities (All Team Members)
+
+- **Everyone:** Participate in design brainstorming sessions
+- **Everyone:** Review and provide feedback on all designs
+
+## Communication Plan
+
+### Weekly Sync Meetings
+- **Day:** To be decided by team
+- **Duration:** 1 hour
+- **Agenda:** Progress updates, blockers, design discussions
+
+### Bi-weekly Mentor Sessions
+- Present design progress
+- Get feedback on technical approach
+- Clarify requirements
+
+### Async Communication
+- Use GitHub Issues for task-specific discussions
+- Update issue status regularly
+- Tag team members for reviews
+
 ## Acknowledgments
 - EUMaster4HPC Program
 - LuxProvide and MeluXina Supercomputer
