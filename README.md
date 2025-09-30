@@ -197,6 +197,145 @@ classDiagram
     RecipeLoader --> ServiceRecipe
 ```
 
+### Report Module
+```mermaid
+classDiagram
+    %% Core Monitoring Classes
+    class MonitorManager {
+        -running_monitors: Dict[str, MonitorInstance]
+        -recipe_loader: RecipeLoader
+        -prometheus_client: PrometheusClient
+        -grafana_client: GrafanaClient
+        -report_manager: ReportManager
+        -logger: Logger
+        +start_monitor(recipe_name: str, config: dict) MonitorInstance
+        +stop_monitor(monitor_id: str) bool
+        +list_monitor_descriptions() List[str]
+        +list_running_monitors() List[MonitorInstance]
+        +check_monitor(monitor_id: str) MonitorStatus
+        +collect_metrics_in_file(monitor_id: str, filepath: str) bool
+        +show_metrics(monitor_id: str) str
+        +construct_report(monitor_id: str) Report
+    }
+
+    class MonitorInstance {
+        -id: str
+        -recipe: MonitorRecipe
+        -status: MonitorStatus
+        -prometheus_instance_id: str
+        -grafana_instance_id: str
+        -created_at: datetime
+        -target_services: List[str]
+        +start() bool
+        +stop() bool
+        +get_status() MonitorStatus
+        +health_check() bool
+        +get_logs() str
+        +get_metrics() dict
+    }
+
+    class MonitorRecipe {
+        -name: str
+        -target_services: List[str]
+        -collection_interval: str
+        -retention_period: str
+        -prometheus_config: dict
+        -grafana_config: dict
+        +validate() bool
+        +to_dict() dict
+        +from_yaml(yaml_path: str) MonitorRecipe
+    }
+
+    class RecipeLoader {
+        -recipe_directory: str
+        -cache: dict
+        +load_recipe(name: str) MonitorRecipe
+        +list_available_recipes() List[str]
+        +validate_recipe(recipe: MonitorRecipe) List[str]
+        +reload_recipes() bool
+    }
+
+    %% Prometheus Integration
+    class PrometheusClient {
+        -base_url: str
+        -orchestrator: Orchestrator
+        +deploy_prometheus(targets: List[str], config: dict) str
+        +stop_prometheus(instance_id: str) bool
+        +query(instance_id: str, promql: str) QueryResult
+        +query_range(instance_id: str, promql: str, start: datetime, end: datetime) QueryResult
+        +health_check(instance_id: str) bool
+        +export_metrics_to_file(instance_id: str, query: str, filepath: str) bool
+    }
+
+    %% Grafana Integration
+    class GrafanaClient {
+        -base_url: str
+        -orchestrator: Orchestrator
+        +deploy_grafana(prometheus_url: str, config: dict) str
+        +stop_grafana(instance_id: str) bool
+        +create_dashboard(instance_id: str, title: str, prometheus_url: str) str
+        +health_check(instance_id: str) bool
+    }
+
+    %% Reporting System
+    class ReportManager {
+        +generate_report(monitor_id: str, prometheus_client: PrometheusClient) Report
+        +save_report(report: Report, filepath: str) bool
+    }
+
+    class Report {
+        -report_id: str
+        -monitor_id: str
+        -timestamp: datetime
+        -metrics_data: str
+        -summary: str
+        +generate_html() str
+        +generate_json() str
+    }
+
+    %% Data Models
+    class QueryResult {
+        -query: str
+        -timestamp: datetime
+        -data: List[MetricSample]
+        +to_json() str
+        +to_dict() dict
+    }
+
+    class MetricSample {
+        -metric_name: str
+        -labels: Dict[str, str]
+        -value: float
+        -timestamp: datetime
+    }
+
+    class MonitorStatus {
+        <<enumeration>>
+        STARTING
+        RUNNING
+        STOPPING
+        STOPPED
+        ERROR
+    }
+
+    %% Relationships
+    MonitorManager --> RecipeLoader
+    MonitorManager --> MonitorInstance
+    MonitorManager --> PrometheusClient
+    MonitorManager --> GrafanaClient
+    MonitorManager --> ReportManager
+    
+    RecipeLoader --> MonitorRecipe
+    
+    MonitorInstance --> MonitorRecipe
+    MonitorInstance --> MonitorStatus
+    
+    PrometheusClient --> QueryResult
+    QueryResult --> MetricSample
+    
+    ReportManager --> Report
+```
+
 #### Core Components
 - **ServerManager**: Central orchestration component that manages the complete lifecycle of containerized AI services. Coordinates between recipe loading, service registry, orchestration, and request handling. Integrates directly with both Kubernetes and SLURM environments.
 - **ServiceRegistry**: Registry that tracks all running service instances. Provides service discovery, cleanup of stale services, and access coordination.
