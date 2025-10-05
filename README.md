@@ -166,36 +166,24 @@ poetry run black --check src/
 
 #### Server Module
 ```bash
-# Edit server implementation
-vim src/ubenchai/servers/manager.py
-
 # Test server commands
 poetry run ubenchai server start --recipe test-recipe
 ```
 
 #### Client Module
 ```bash
-# Edit client implementation
-vim src/ubenchai/clients/manager.py
-
 # Test client commands
 poetry run ubenchai client run --recipe test-workload
 ```
 
 #### Monitor Module
 ```bash
-# Edit monitor implementation
-vim src/ubenchai/monitors/manager.py
-
 # Test monitor commands
 poetry run ubenchai monitor start --recipe test-monitor
 ```
 
 #### Reporting Module
 ```bash
-# Add reporting functionality
-vim src/ubenchai/monitors/report.py
-
 # Test report generation
 poetry run ubenchai monitor report <monitor-id> --format html
 ```
@@ -249,8 +237,6 @@ poetry run ubenchai --help
 poetry shell
 ubenchai --help
 ```
-
-
 
 ## Architecture
 
