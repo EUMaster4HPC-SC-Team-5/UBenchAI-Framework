@@ -1,27 +1,58 @@
 [project]
-name = "ubenchai-framework"
+name = "ubenchai"
 version = "0.1.0"
 description = "Unified Benchmarking Framework for AI Workflows"
 authors = [
-    {name = "Dennys Huber",email = "dennys.huber@proton.me"}
+    {name = "Dennys Huber", email = "dennys.huber@proton.me"}
 ]
 readme = "README.md"
-requires-python = "^3.12"
+requires-python = ">=3.12"
 dependencies = [
-    "pyyaml (>=6.0.3,<7.0.0)",
-    "black (>=25.9.0,<26.0.0)",
-    "loguru (>=0.7.3,<0.8.0)"
+    "pyyaml>=6.0.3,<7.0.0",
+    "black>=25.9.0,<26.0.0",
+    "loguru>=0.7.3,<0.8.0",
 ]
+
+[project.scripts]
+ubenchai = "ubenchai.cli:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-package-mode = false
+package-mode = true
+name = "ubenchai"
+version = "0.1.0"
+description = "Unified Benchmarking Framework for AI Workflows"
+authors = ["Dennys Huber <dennys.huber@proton.me>"]
+readme = "README.md"
+packages = [{include = "ubenchai", from = "src"}]
 
-[tool.poetry.group.slurm]
+[tool.poetry.dependencies]
+python = "^3.12"
+pyyaml = "^6.0.3"
+black = "^25.9.0"
+loguru = "^0.7.3"
+
+[tool.poetry.group.dev]
 optional = true
 
-[tool.poetry.group.slurm.dependencies]
-pyslurm = "^18.8.1.1"
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-cov = "^6.0.0"
+mypy = "^1.0.0"
+
+[tool.poetry.scripts]
+ubenchai = "ubenchai.cli:main"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+include = '\.pyi?$'
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

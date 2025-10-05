@@ -1,0 +1,12 @@
+---
+# Configuration for one or multiple Services
+Servers:
+  - name: Service 1
+
+  - name: Service 2
+
+  - name: Service 3
+
+---
+# Configuration for one or multiple Clients
+Clients:
