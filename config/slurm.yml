@@ -1,0 +1,16 @@
+# SLURM Configuration
+# This file contains non-sensitive settings
+# Secrets should be in .env file
+
+slurm:
+  # These can be overridden by environment variables or constructor args
+  partition: gpu
+  qos: default
+  time_limit: "00:10:00"
+  
+  # Module configuration for MeluXina
+  module_env: "env/release/2024.1"
+  apptainer_module: "Apptainer/1.3.6-GCCcore-13.3.0"
+  
+  # Image cache location
+  image_cache: "/scratch/$USER/.apptainer_cache"
