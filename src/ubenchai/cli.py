@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-Command-line interface for UBenchAI Framework
+Command-line interface for UBenchAI Framework - Updated with ServerManager
 """
 
 import sys
 import argparse
 from loguru import logger
+from tabulate import tabulate
 
 
 def setup_logging(verbose: bool = False):
     """Configure logging for the application"""
-    logger.remove()  # Remove default handler
+    logger.remove()
     log_level = "DEBUG" if verbose else "INFO"
     logger.add(
         sys.stderr,
@@ -30,6 +31,117 @@ def print_banner():
     print(banner)
 
 
+def handle_server_commands(args):
+    """Handle server subcommands"""
+    from ubenchai.servers.manager import ServerManager
+    from ubenchai.servers.orchestrator import OrchestratorType
+
+    # Initialize ServerManager
+    manager = ServerManager(
+        orchestrator_type=OrchestratorType.SLURM, recipe_directory="recipes"
+    )
+
+    try:
+        if args.action == "start":
+            # Start a service
+            logger.info(f"Starting service from recipe: {args.recipe}")
+            instance = manager.start_service(args.recipe)
+
+            print(f"\n Service started successfully!")
+            print(f"   Service ID: {instance.id}")
+            print(f"   Recipe: {instance.recipe.name}")
+            print(f"   Status: {instance.status.value}")
+            print(f"   Orchestrator Handle: {instance.orchestrator_handle}")
+
+        elif args.action == "stop":
+            # Stop a service
+            logger.info(f"Stopping service: {args.service_id}")
+            success = manager.stop_service(args.service_id)
+
+            if success:
+                print(f"\n Service stopped successfully: {args.service_id}")
+            else:
+                print(f"\n Failed to stop service: {args.service_id}")
+                sys.exit(1)
+
+        elif args.action == "list":
+            # List services
+            print("\n Available Recipes:")
+            recipes = manager.list_available_services()
+            if recipes:
+                for recipe in recipes:
+                    info = manager.get_recipe_info(recipe)
+                    print(f"   • {recipe}: {info.get('description', 'No description')}")
+            else:
+                print("   No recipes found")
+
+            print("\n Running Services:")
+            services = manager.list_running_services()
+            if services:
+                table_data = []
+                for svc in services:
+                    table_data.append(
+                        [
+                            svc["id"][:8],
+                            svc["recipe_name"],
+                            svc["status"],
+                            svc["created_at"][:19],
+                        ]
+                    )
+                print(
+                    tabulate(
+                        table_data,
+                        headers=["Service ID", "Recipe", "Status", "Created At"],
+                        tablefmt="simple",
+                    )
+                )
+            else:
+                print("   No running services")
+
+        elif args.action == "status":
+            # Get service status
+            logger.info(f"Getting status for service: {args.service_id}")
+            status = manager.get_service_status(args.service_id)
+
+            print(f"\n Service Status:")
+            print(f"   Service ID: {status['id']}")
+            print(f"   Recipe: {status['recipe_name']}")
+            print(f"   Status: {status['status']}")
+            print(f"   Created: {status['created_at']}")
+            print(f"   Orchestrator Handle: {status['orchestrator_handle']}")
+
+            if status["endpoints"]:
+                print(f"\n   Endpoints:")
+                for ep in status["endpoints"]:
+                    print(f"      • {ep['protocol']}://{ep['url']}:{ep['port']}")
+
+    except FileNotFoundError as e:
+        print(f"\n Error: {e}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"\n Validation Error: {e}")
+        sys.exit(1)
+    except RuntimeError as e:
+        print(f"\n Runtime Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.exception("Unexpected error")
+        print(f"\n Unexpected Error: {e}")
+        sys.exit(1)
+
+
+def handle_client_commands(args):
+    """Handle client subcommands"""
+    logger.info(f"Client Module - Action: {args.action}")
+    # TODO: Initialize and run ClientManager based on args.action
+
+
+def handle_monitor_commands(args):
+    """Handle monitor subcommands"""
+    logger.info(f"Monitor Module - Action: {args.action}")
+    # TODO: Initialize and run MonitorManager based on args.action
+
+
 def create_parser():
     """Create and configure argument parser"""
     parser = argparse.ArgumentParser(
@@ -38,7 +150,11 @@ def create_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ubenchai server start --recipe llm-inference
+  ubenchai server start --recipe ollama-llm
+  ubenchai server list
+  ubenchai server status <service-id>
+  ubenchai server stop <service-id>
+
   ubenchai client run --recipe stress-test
   ubenchai monitor start --targets service1,service2
 
@@ -182,25 +298,11 @@ def main():
 
     # Route to appropriate module based on command
     if args.command == "server":
-        # from ubenchai.servers.manager import ServerManager
-        logger.info(f"Server Module - Action: {args.action}")
-        # TODO: Initialize and run ServerManager based on args.action
-
+        handle_server_commands(args)
     elif args.command == "client":
-        # from ubenchai.clients.manager import ClientManager
-        logger.info(f"Client Module - Action: {args.action}")
-        # TODO: Initialize and run ClientManager based on args.action
-
+        handle_client_commands(args)
     elif args.command == "monitor":
-        # from ubenchai.monitors.manager import MonitorManager
-        logger.info(f"Monitor Module - Action: {args.action}")
-        # TODO: Initialize and run MonitorManager based on args.action
-
-
-def print_usage():
-    """Print usage information (kept for backward compatibility)"""
-    parser = create_parser()
-    parser.print_help()
+        handle_monitor_commands(args)
 
 
 if __name__ == "__main__":

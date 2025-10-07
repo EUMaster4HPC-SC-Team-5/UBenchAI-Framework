@@ -1,0 +1,40 @@
+# Sample service recipe for Ollama LLM inference service
+
+name: ollama-llm
+description: Ollama LLM inference service with GPU support
+image: docker://ollama/ollama:latest
+
+resources:
+  cpu_cores: 4
+  memory_gb: 16
+  gpu_count: 1
+  gpu_type: nvidia
+  disk_gb: 50
+
+ports:
+  - container_port: 11434
+    host_port: 11434
+    protocol: tcp
+
+environment:
+  OLLAMA_HOST: "0.0.0.0"
+  OLLAMA_ORIGINS: "*"
+  OLLAMA_NUM_PARALLEL: "4"
+
+volumes:
+  - host_path: /scratch/$USER/ollama/models
+    container_path: /root/.ollama
+    readonly: false
+
+healthcheck:
+  endpoint: /api/tags
+  interval_seconds: 15
+  timeout_seconds: 10
+  retries: 3
+  initial_delay: 30
+
+command:
+  - ollama
+  - serve
+
+working_dir: /root
