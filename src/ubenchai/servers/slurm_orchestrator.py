@@ -19,60 +19,55 @@ class SlurmOrchestrator(Orchestrator):
     SLURM orchestrator for HPC cluster job submission and management
     """
 
-    class SlurmOrchestrator(Orchestrator):
-        def __init__(
-            self,
-            partition: Optional[str] = None,
-            account: Optional[str] = None,
-            qos: Optional[str] = None,
-            time_limit: Optional[str] = None,
-            config_file: str = "config/slurm.yml",
-        ):
-            """Initialize SLURM orchestrator with credentials from multiple sources"""
+    def __init__(
+        self,
+        partition: Optional[str] = None,
+        account: Optional[str] = None,
+        qos: Optional[str] = None,
+        time_limit: Optional[str] = None,
+        config_file: str = "config/slurm.yml",
+    ):
+        """Initialize SLURM orchestrator with credentials from multiple sources"""
 
-            # Load dotenv
-            try:
-                from dotenv import load_dotenv
+        # Load dotenv
+        try:
+            from dotenv import load_dotenv
 
-                load_dotenv()
-            except ImportError:
-                logger.debug("python-dotenv not available")
+            load_dotenv()
+        except ImportError:
+            logger.debug("python-dotenv not available")
 
-            config = self._load_config(config_file)
+        config = self._load_config(config_file)
 
-            self.account = (
-                account or os.getenv("SLURM_ACCOUNT") or config.get("account")
+        self.account = account or os.getenv("SLURM_ACCOUNT") or config.get("account")
+
+        self.partition = (
+            partition or os.getenv("SLURM_PARTITION") or config.get("partition", "gpu")
+        )
+
+        self.qos = qos or os.getenv("SLURM_QOS") or config.get("qos", "default")
+
+        self.time_limit = (
+            time_limit
+            or os.getenv("SLURM_TIME_LIMIT")
+            or config.get("time_limit", "01:00:00")
+        )
+
+        # Validate
+        if not self.account:
+            raise ValueError(
+                "SLURM account must be provided via:\n"
+                "  1. Constructor: account='p200981'\n"
+                "  2. Environment: export SLURM_ACCOUNT=p200981\n"
+                "  3. .env file: SLURM_ACCOUNT=p200981\n"
+                "  4. Config file: config/slurm.yml\n\n"
+                "To find your account: sacctmgr show user $USER format=account"
             )
 
-            self.partition = (
-                partition
-                or os.getenv("SLURM_PARTITION")
-                or config.get("partition", "gpu")
-            )
-
-            self.qos = qos or os.getenv("SLURM_QOS") or config.get("qos", "default")
-
-            self.time_limit = (
-                time_limit
-                or os.getenv("SLURM_TIME_LIMIT")
-                or config.get("time_limit", "01:00:00")
-            )
-
-            # Validate
-            if not self.account:
-                raise ValueError(
-                    "SLURM account must be provided via:\n"
-                    "  1. Constructor: account='p200981'\n"
-                    "  2. Environment: export SLURM_ACCOUNT=p200981\n"
-                    "  3. .env file: SLURM_ACCOUNT=p200981\n"
-                    "  4. Config file: config/slurm.yml\n\n"
-                    "To find your account: sacctmgr show user $USER format=account"
-                )
-
-            logger.info(
-                f"SlurmOrchestrator: account={self.account}, "
-                f"partition={self.partition}, qos={self.qos}"
-            )
+        logger.info(
+            f"SlurmOrchestrator: account={self.account}, "
+            f"partition={self.partition}, qos={self.qos}"
+        )
 
     def _load_config(self, config_file: str) -> dict:
         """Load configuration from YAML file"""
