@@ -10,8 +10,8 @@ resources:
   gpu_count: 1
   gpu_type: nvidia
   disk_gb: 50
-  nodes: 1              # Use 4 compute nodes
-  ntasks: 1            # Total 16 tasks across all nodes
+  nodes: 1 # Use 4 compute nodes
+  ntasks: 1 # Total 16 tasks across all nodes
 
 ports:
   - container_port: 11434
@@ -24,7 +24,7 @@ environment:
   OLLAMA_NUM_PARALLEL: "4"
 
 volumes:
-  - host_path: /scratch/$USER/ollama/models
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/ollama/models
     container_path: /root/.ollama
     readonly: false
 
@@ -36,7 +36,70 @@ healthcheck:
   initial_delay: 30
 
 command:
-  - ollama
-  - serve
+  - /bin/bash
+  - -c
+  - |
+    echo "========================================="
+    echo "TinyLlama Quick Test"
+    echo "========================================="
+
+    # Start Ollama server in background
+    ollama serve > /tmp/ollama.log 2>&1 &
+    SERVER_PID=$!
+    echo "Started Ollama server (PID: $SERVER_PID)"
+
+    # Wait for server to be ready (max 60 seconds)
+    echo "Waiting for server to be ready..."
+    for i in {1..30}; do
+      if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+        echo "✓ Server is ready!"
+        break
+      fi
+      sleep 2
+    done
+
+    # Pull TinyLlama (1.1B parameters - small and fast)
+    echo ""
+    echo "Pulling TinyLlama model..."
+    ollama pull tinyllama
+    echo "✓ Model pulled successfully"
+
+    # Run test prompts
+    echo ""
+    echo "========================================="
+    echo "Running test prompts..."
+    echo "========================================="
+
+    echo ""
+    echo "Test 1: Simple question"
+    ollama run tinyllama "What is 2+2? Answer in one short sentence." --verbose
+
+    echo ""
+    echo "Test 2: Code generation"
+    ollama run tinyllama "Write a Python function to add two numbers. Just show the code." --verbose
+
+    echo ""
+    echo "Test 3: Creative writing"
+    ollama run tinyllama "Write a haiku about programming." --verbose
+
+    # Show model info
+    echo ""
+    echo "========================================="
+    echo "Available models:"
+    ollama list
+
+    echo ""
+    echo "Model information:"
+    ollama show tinyllama
+
+    # Cleanup
+    echo ""
+    echo "========================================="
+    echo "Test completed successfully!"
+    echo "Stopping server..."
+    kill $SERVER_PID
+    wait $SERVER_PID 2>/dev/null
+    echo "✓ Server stopped"
+    echo "========================================="
 
 working_dir: /root
