@@ -10,6 +10,8 @@ resources:
   gpu_count: 1
   gpu_type: nvidia
   disk_gb: 50
+  nodes: 1              # Use 4 compute nodes
+  ntasks: 1            # Total 16 tasks across all nodes
 
 ports:
   - container_port: 11434

@@ -101,6 +101,7 @@ class SlurmOrchestrator(Orchestrator):
 
         # Build SLURM batch script
         script_content = self._build_batch_script(recipe)
+        logger.debug(script_content)
 
         # Submit job
         try:
@@ -218,21 +219,29 @@ class SlurmOrchestrator(Orchestrator):
         Returns:
             Batch script content
         """
-        # Build resource requirements
-        resources = recipe.resources.to_slurm_resources()
 
         # Build environment variables
         env_exports = "\n".join(
             [f"export {key}={value}" for key, value in recipe.environment.items()]
         )
 
-        # Build volume bindings for Apptainer
+        # Build volume bindings for Apptainer and create directories
         volume_binds = ""
+        mkdir_commands = []
         if recipe.volumes:
-            binds = ",".join(
-                [f"{vol.host_path}:{vol.container_path}" for vol in recipe.volumes]
-            )
-            volume_binds = f"--bind {binds}"
+            binds = []
+            for vol in recipe.volumes:
+                # Expand $USER in paths
+                host_path = vol.host_path.replace("$USER", "${USER}")
+                binds.append(f"{host_path}:{vol.container_path}")
+                # Add mkdir command to ensure directory exists
+                mkdir_commands.append(f"mkdir -p {host_path}")
+
+            volume_binds = f"--bind {','.join(binds)}"
+
+        mkdir_section = (
+            "\n".join(mkdir_commands) if mkdir_commands else "# No volumes to prepare"
+        )
 
         # Build command
         command = " ".join(recipe.command) if recipe.command else ""
@@ -245,49 +254,46 @@ class SlurmOrchestrator(Orchestrator):
 #SBATCH --qos={self.qos}
 #SBATCH --partition={self.partition}
 #SBATCH --account={self.account}
-"""
+#SBATCH --nodes={recipe.resources.nodes}
+#SBATCH --ntasks={recipe.resources.ntasks}
 
-        if self.account:
-            script += f"#SBATCH --account={self.account}\n"
-
-        script += f"""#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --ntasks-per-node=1
-{resources}
-
-echo "========================================="
-echo "SLURM Job Information"
-echo "========================================="
-echo "Date              = $(date)"
-echo "Hostname          = $(hostname -s)"
-echo "Working Directory = $(pwd)"
-echo "Job ID            = $SLURM_JOB_ID"
-echo "Job Name          = {recipe.name}"
-echo "========================================="
+    echo "========================================="
+    echo "SLURM Job Information"
+    echo "========================================="
+    echo "Date              = $(date)"
+    echo "Hostname          = $(hostname -s)"
+    echo "Working Directory = $(pwd)"
+    echo "Job ID            = $SLURM_JOB_ID"
+    echo "Job Name          = {recipe.name}"
+    echo "========================================="
 
 # Initialize Lmod module system
-source /usr/share/lmod/lmod/init/bash
+    source /usr/share/lmod/lmod/init/bash
 
 # Load required modules
-module load env/release/2024.1
-module load Apptainer/1.3.6-GCCcore-13.3.0
+    module load env/release/2024.1
+    module load Apptainer/1.3.6-GCCcore-13.3.0
+
+# Prepare volume mount directories
+    echo "Preparing volume mount directories..."
+    {mkdir_section}
 
 # Set environment variables
-{env_exports}
+    {env_exports}
 
 # Pull container image if not exists
-IMAGE_FILE=$(echo {recipe.image} | sed 's|docker://||' | sed 's|/|_|g' | sed 's|:|_|g').sif
-if [ ! -f "$IMAGE_FILE" ]; then
-    echo "Pulling container image: {recipe.image}"
-    apptainer pull $IMAGE_FILE {recipe.image}
-fi
+    IMAGE_FILE=$(echo {recipe.image} | sed 's|docker://||' | sed 's|/|_|g' | sed 's|:|_|g').sif
+    if [ ! -f "$IMAGE_FILE" ]; then
+        echo "Pulling container image: {recipe.image}"
+        apptainer pull $IMAGE_FILE {recipe.image}
+    fi
 
 # Run the service
-echo "Starting service: {recipe.name}"
-apptainer exec --nv {volume_binds} $IMAGE_FILE {command}
+    echo "Starting service: {recipe.name}"
+    apptainer exec --nv {volume_binds} $IMAGE_FILE {command}
 
-echo "Service completed"
-"""
+    echo "Service completed"
+    """
 
         return script
 
