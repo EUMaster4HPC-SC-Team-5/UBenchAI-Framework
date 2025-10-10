@@ -9,7 +9,7 @@ resources:
   cpu_cores: 4
   memory_gb: 16
   gpu_count: 1
-  gpu_type: nvidia
+  # gpu_type: null  # Don't specify - let MeluXina auto-detect
   disk_gb: 50
   nodes: 1
   ntasks: 1
@@ -67,21 +67,15 @@ command:
     }
     trap cleanup EXIT INT TERM
     
-    # Wait for server to be ready (max 2 minutes)
-    echo "Waiting for server to be ready..."
-    for i in {1..60}; do
-        if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-            echo "✓ Server is ready!"
-            break
-        fi
-        if [ $i -eq 60 ]; then
-            echo "✗ Server failed to start within 120 seconds"
-            echo "=== Server Logs ==="
-            cat /tmp/ollama-server.log
-            exit 1
-        fi
-        sleep 2
-    done
+    echo "Waiting for server to initialize (15 seconds)..."
+    sleep 15
+
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+        echo "✗ Server process died during startup"
+        echo "=== Server Logs ==="
+        cat /tmp/ollama-server.log
+        exit 1
+    fi
     
     # Download TinyLlama model
     echo ""

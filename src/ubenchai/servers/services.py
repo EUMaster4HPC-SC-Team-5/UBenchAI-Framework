@@ -63,6 +63,9 @@ class ResourceSpec:
     gpu_type: Optional[str] = None
     disk_gb: int = 10
     network_bandwidth: Optional[int] = None
+    nodes: int = 1
+    ntasks: int = 1
+    ntasks_per_node: int = 1
 
     def validate(self) -> bool:
         """Validate resource specifications"""
@@ -191,6 +194,9 @@ class ServiceRecipe:
             gpu_count=resources_data.get("gpu_count", 0),
             gpu_type=resources_data.get("gpu_type"),
             disk_gb=resources_data.get("disk_gb", 10),
+            nodes=resources_data.get("nodes", 1),
+            ntasks=resources_data.get("ntasks", 1),
+            ntasks_per_node=resources_data.get("ntasks_per_node", 1),
         )
 
         ports = [

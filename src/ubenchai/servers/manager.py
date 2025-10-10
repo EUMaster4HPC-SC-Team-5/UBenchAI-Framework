@@ -5,6 +5,7 @@ ServerManager - Central orchestration for containerized AI services
 from typing import Dict, List, Optional
 from pathlib import Path
 from loguru import logger
+import subprocess
 
 from ubenchai.servers.services import (
     ServiceInstance,
@@ -176,15 +177,67 @@ class ServerManager:
 
     def list_running_services(self) -> List[Dict]:
         """
-        List running service instances
+        List running service instances by querying SLURM
 
         Returns:
             List of running service information as dictionaries
         """
-        logger.info("Listing running services")
-        instances = self.service_registry.get_all_services()
+        logger.info("Listing running services from SLURM")
 
-        return [instance.to_dict() for instance in instances]
+        # Get jobs from SLURM that were started by this framework
+        try:
+            result = subprocess.run(
+                [
+                    "squeue",
+                    "--me",  # Only my jobs
+                    "--format=%i|%j|%T|%S",  # JobID|Name|State|StartTime
+                    "--noheader",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            services = []
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    continue
+
+                parts = line.split("|")
+                if len(parts) < 4:
+                    continue
+
+                job_id, job_name, state, start_time = parts
+
+                # Map SLURM state to our ServiceStatus
+                status_map = {
+                    "PENDING": "pending",
+                    "RUNNING": "running",
+                    "COMPLETED": "stopped",
+                    "FAILED": "error",
+                    "CANCELLED": "stopped",
+                }
+                status = status_map.get(state, "unknown")
+
+                services.append(
+                    {
+                        "id": job_id,
+                        "recipe_name": job_name,
+                        "status": status,
+                        "created_at": start_time if start_time != "N/A" else "unknown",
+                        "orchestrator_handle": job_id,
+                        "endpoints": [],
+                    }
+                )
+
+            logger.debug(f"Found {len(services)} running services in SLURM")
+            return services
+
+        except Exception as e:
+            logger.error(f"Failed to query SLURM: {e}")
+            # Fall back to registry
+            instances = self.service_registry.get_all_services()
+            return [instance.to_dict() for instance in instances]
 
     def get_service_status(self, service_id: str) -> Dict:
         """
