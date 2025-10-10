@@ -1,0 +1,34 @@
+name: ollama-simple-test
+description: Simple test benchmark for Ollama LLM service
+
+target:
+  service: ollama-llm  # Will auto-discover via SLURM
+  # endpoint: "http://mel2067:11434"  # Or specify directly
+  protocol: http
+  timeout_seconds: 30
+
+workload:
+  pattern: closed-loop
+  duration_seconds: 60
+  concurrent_users: 5
+  think_time_ms: 100
+
+dataset:
+  type: synthetic
+  params:
+    prompt_length: 50
+    num_prompts: 100
+
+orchestration:
+  mode: slurm
+  resources:
+    cpu_cores: 2
+    memory_gb: 4
+
+output:
+  metrics:
+    - latency
+    - throughput
+    - errors
+  format: json
+  destination: ./results

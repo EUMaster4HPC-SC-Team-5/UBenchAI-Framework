@@ -132,8 +132,86 @@ def handle_server_commands(args):
 
 def handle_client_commands(args):
     """Handle client subcommands"""
-    logger.info(f"Client Module - Action: {args.action}")
-    # TODO: Initialize and run ClientManager based on args.action
+    from ubenchai.clients.manager import ClientManager
+    
+    manager = ClientManager(recipe_directory="recipes/clients")
+    
+    try:
+        if args.action == "run":
+            logger.info(f"Starting client from recipe: {args.recipe}")
+            run = manager.start_client(args.recipe)
+            
+            print(f"\n✓ Client started successfully!")
+            print(f"   Run ID: {run.id}")
+            print(f"   Recipe: {run.recipe_name}")
+            print(f"   Status: {run.status.value}")
+            print(f"   Target: {run.target_endpoint}")
+            print(f"   Orchestrator Handle: {run.orchestrator_handle}")
+            
+        elif args.action == "stop":
+            logger.info(f"Stopping client run: {args.run_id}")
+            success = manager.stop_client(args.run_id)
+            
+            if success:
+                print(f"\n✓ Client run stopped: {args.run_id}")
+            else:
+                print(f"\n✗ Failed to stop run: {args.run_id}")
+                sys.exit(1)
+                
+        elif args.action == "list":
+            print("\n📋 Available Recipes:")
+            recipes = manager.list_available_clients()
+            if recipes:
+                for recipe in recipes:
+                    info = manager.get_recipe_info(recipe)
+                    print(f"   • {recipe}: {info.get('description', 'No description')}")
+            else:
+                print("   No recipes found")
+            
+            print("\n🏃 Running Clients:")
+            runs = manager.list_running_clients()
+            if runs:
+                table_data = []
+                for r in runs:
+                    table_data.append([
+                        r['id'][:8],
+                        r['recipe_name'],
+                        r['status'],
+                        r['created_at'][:19]
+                    ])
+                print(tabulate(
+                    table_data,
+                    headers=["Run ID", "Recipe", "Status", "Created At"],
+                    tablefmt="simple"
+                ))
+            else:
+                print("   No running clients")
+                
+        elif args.action == "status":
+            logger.info(f"Getting status for run: {args.run_id}")
+            status = manager.get_client_status(args.run_id)
+            
+            print(f"\n📊 Client Run Status:")
+            print(f"   Run ID: {status['id']}")
+            print(f"   Recipe: {status['recipe_name']}")
+            print(f"   Status: {status['status']}")
+            print(f"   Created: {status['created_at']}")
+            print(f"   Target: {status['target_endpoint']}")
+            print(f"   Orchestrator Handle: {status['orchestrator_handle']}")
+            
+    except FileNotFoundError as e:
+        print(f"\n✗ Error: {e}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"\n✗ Validation Error: {e}")
+        sys.exit(1)
+    except RuntimeError as e:
+        print(f"\n✗ Runtime Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.exception("Unexpected error")
+        print(f"\n✗ Unexpected Error: {e}")
+        sys.exit(1)
 
 
 def handle_monitor_commands(args):
