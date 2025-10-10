@@ -260,11 +260,8 @@ class SlurmOrchestrator(Orchestrator):
         gpu_sbatch = ""
         gpu_flag = ""
         if recipe.resources.gpu_count > 0:
-            if recipe.resources.gpu_type:
-                gpu_sbatch = f"#SBATCH --gres=gpu:{recipe.resources.gpu_type}:{recipe.resources.gpu_count}"
-            else:
                 gpu_sbatch = f"#SBATCH --gres=gpu:{recipe.resources.gpu_count}"
-            gpu_flag = "--nv"  # Enable NVIDIA GPU support
+                gpu_flag = "--nv"  # Enable NVIDIA GPU support
 
         # Build volume bindings
         # Must include /mnt/tier1 for MeluXina scratch access
