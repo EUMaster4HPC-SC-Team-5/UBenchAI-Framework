@@ -30,7 +30,7 @@ class SlurmOrchestrator(Orchestrator):
     ):
         """
         Initialize SLURM orchestrator with MeluXina configuration
-        
+
         Args:
             partition: SLURM partition (e.g., 'gpu', 'cpu')
             account: SLURM account ID (e.g., 'p00000')
@@ -38,10 +38,11 @@ class SlurmOrchestrator(Orchestrator):
             time_limit: Job time limit (e.g., '01:00:00')
             config_file: Path to YAML configuration file
         """
-        
+
         # Load dotenv for environment variables
         try:
             from dotenv import load_dotenv
+
             load_dotenv()
         except ImportError:
             logger.debug("python-dotenv not available, skipping .env file")
@@ -89,10 +90,10 @@ class SlurmOrchestrator(Orchestrator):
     def _load_config(self, config_file: str) -> dict:
         """
         Load configuration from YAML file
-        
+
         Args:
             config_file: Path to YAML configuration file
-            
+
         Returns:
             Dictionary with configuration values
         """
@@ -113,13 +114,13 @@ class SlurmOrchestrator(Orchestrator):
     def deploy_service(self, recipe: ServiceRecipe) -> str:
         """
         Deploy a service via SLURM sbatch submission
-        
+
         Args:
             recipe: ServiceRecipe containing deployment configuration
-            
+
         Returns:
             Job ID as the orchestrator handle
-            
+
         Raises:
             RuntimeError: If deployment fails
         """
@@ -127,7 +128,7 @@ class SlurmOrchestrator(Orchestrator):
 
         # Build SLURM batch script
         script_content = self._build_batch_script(recipe)
-        
+
         logger.debug("Generated SLURM batch script:")
         logger.debug("-" * 80)
         logger.debug(script_content)
@@ -145,10 +146,10 @@ class SlurmOrchestrator(Orchestrator):
     def stop_service(self, handle: str) -> bool:
         """
         Stop a service by cancelling the SLURM job
-        
+
         Args:
             handle: SLURM job ID
-            
+
         Returns:
             True if successful, False otherwise
         """
@@ -170,10 +171,10 @@ class SlurmOrchestrator(Orchestrator):
     def get_service_status(self, handle: str) -> ServiceStatus:
         """
         Get service status from SLURM queue
-        
+
         Args:
             handle: SLURM job ID
-            
+
         Returns:
             ServiceStatus enum value
         """
@@ -206,10 +207,10 @@ class SlurmOrchestrator(Orchestrator):
     def get_service_logs(self, handle: str) -> str:
         """
         Get service logs from SLURM output file
-        
+
         Args:
             handle: SLURM job ID
-            
+
         Returns:
             Log contents as string
         """
@@ -228,11 +229,11 @@ class SlurmOrchestrator(Orchestrator):
     def scale_service(self, handle: str, replicas: int) -> bool:
         """
         Scale service (not supported for SLURM batch jobs)
-        
+
         Args:
             handle: SLURM job ID
             replicas: Number of replicas (ignored)
-            
+
         Returns:
             False (not supported)
         """
@@ -248,10 +249,10 @@ class SlurmOrchestrator(Orchestrator):
         4. Pull container image (if not cached)
         5. Create startup script from recipe command
         6. Execute startup script inside container using apptainer exec
-        
+
         Args:
             recipe: ServiceRecipe containing all configuration
-            
+
         Returns:
             Complete SLURM batch script as string
         """
@@ -260,37 +261,43 @@ class SlurmOrchestrator(Orchestrator):
         gpu_sbatch = ""
         gpu_flag = ""
         if recipe.resources.gpu_count > 0:
-                gpu_sbatch = f"#SBATCH --gres=gpu:{recipe.resources.gpu_count}"
-                gpu_flag = "--nv"  # Enable NVIDIA GPU support
+            gpu_sbatch = f"#SBATCH --gres=gpu:{recipe.resources.gpu_count}"
+            gpu_flag = "--nv"  # Enable NVIDIA GPU support
 
         # Build volume bindings
         # Must include /mnt/tier1 for MeluXina scratch access
         volume_binds = []
         mkdir_commands = []
-        
+
         if recipe.volumes:
             for vol in recipe.volumes:
                 # Host path may contain $SLURM_JOB_ACCOUNT which expands at runtime
                 host_path = vol.host_path
                 volume_binds.append(f"{host_path}:{vol.container_path}")
                 mkdir_commands.append(f"mkdir -p {host_path}")
-            
+
             # Add /mnt/tier1 for scratch access (MeluXina requirement)
             volume_binds.append("/mnt/tier1")
 
         bind_flag = f"--bind {','.join(volume_binds)}" if volume_binds else ""
-        mkdir_section = "\n".join(mkdir_commands) if mkdir_commands else "# No directories to create"
+        mkdir_section = (
+            "\n".join(mkdir_commands)
+            if mkdir_commands
+            else "# No directories to create"
+        )
 
         # Build environment variables with APPTAINERENV_ prefix
         env_exports = []
         for key, value in recipe.environment.items():
             # Apptainer reads APPTAINERENV_* variables and passes them into container
             env_exports.append(f'export APPTAINERENV_{key}="{value}"')
-        env_section = "\n".join(env_exports) if env_exports else "# No environment variables"
+        env_section = (
+            "\n".join(env_exports) if env_exports else "# No environment variables"
+        )
 
         # Extract command from recipe
         # The recipe.command is a list like ['/bin/bash', '-c', 'script...']
-        if recipe.command and len(recipe.command) >= 3 and recipe.command[1] == '-c':
+        if recipe.command and len(recipe.command) >= 3 and recipe.command[1] == "-c":
             # Multi-line bash script
             container_script = recipe.command[2]
         elif recipe.command:
@@ -415,13 +422,13 @@ exit $EXIT_CODE
     def _submit_job(self, script_content: str) -> str:
         """
         Submit job to SLURM using sbatch
-        
+
         Args:
             script_content: Complete batch script content
-            
+
         Returns:
             Job ID as string
-            
+
         Raises:
             RuntimeError: If submission fails
         """
@@ -446,7 +453,7 @@ exit $EXIT_CODE
 
             logger.debug(f"sbatch output: {output}")
             logger.info(f"Job submitted successfully: {job_id}")
-            
+
             return job_id
 
         except subprocess.CalledProcessError as e:
@@ -463,7 +470,7 @@ exit $EXIT_CODE
     def check_connection(self) -> bool:
         """
         Check if SLURM is available and accessible
-        
+
         Returns:
             True if SLURM commands are available, False otherwise
         """
