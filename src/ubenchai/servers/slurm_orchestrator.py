@@ -70,6 +70,8 @@ class SlurmOrchestrator(Orchestrator):
             "apptainer_module", "Apptainer/1.3.6-GCCcore-13.3.0"
         )
 
+        self.image_cache_dir = config.get("image_cache", "./")
+
         # Log directory configuration
         self.log_directory = Path(log_directory)
         self.log_directory.mkdir(parents=True, exist_ok=True)
@@ -92,6 +94,7 @@ class SlurmOrchestrator(Orchestrator):
             f"qos={self.qos}, "
             f"time_limit={self.time_limit}, "
             f"log_directory={self.log_directory}"
+            f"image_cache={self.image_cache_dir}"
         )
 
     def _load_config(self, config_file: str) -> dict:
@@ -393,9 +396,14 @@ echo "Preparing host directories..."
 echo "Setting environment variables..."
 {env_section}
 
+# Set up container image cache directory
+IMAGE_CACHE_DIR="{self.image_cache_dir}"
+mkdir -p "$IMAGE_CACHE_DIR"
+echo "Container cache directory: $IMAGE_CACHE_DIR"
+
 # Pull container image if not exists (caching for efficiency)
 IMAGE_NAME=$(echo "{recipe.image}" | sed 's|docker://||' | sed 's|/|_|g' | sed 's|:|_|g')
-IMAGE_FILE="${{IMAGE_NAME}}.sif"
+IMAGE_FILE="${{IMAGE_CACHE_DIR}}/${{IMAGE_NAME}}.sif"
 
 if [ ! -f "$IMAGE_FILE" ]; then
     echo "Pulling container image: {recipe.image}"
