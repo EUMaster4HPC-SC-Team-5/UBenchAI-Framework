@@ -25,6 +25,7 @@ ports:
 environment:
   QDRANT__SERVICE__HTTP_PORT: "6333"
   QDRANT__SERVICE__GRPC_PORT: "6334"
+  QDRANT__STORAGE__STORAGE_PATH: "/qdrant/storage"
 
 volumes:
   # Project scratch directory for persistent vector storage
@@ -58,13 +59,32 @@ command:
     chmod 755 /qdrant/storage
     
     echo "Storage directory: /qdrant/storage"
-    ls -la /qdrant/
+    ls -la /qdrant/ || echo "Cannot list /qdrant"
     
-    # Start Qdrant server
+    # Verify we can write to storage
+    echo "Testing write access..."
+    touch /qdrant/storage/test_write && rm /qdrant/storage/test_write && echo "✓ Write access OK" || echo "✗ Write access FAILED"
+    
+    # Create Qdrant config file to explicitly set storage path
+    echo "Creating Qdrant configuration..."
+    mkdir -p /tmp/qdrant_config
+    cat > /tmp/qdrant_config/config.yaml << 'EOF'
+storage:
+  storage_path: /qdrant/storage
+
+service:
+  http_port: 6333
+  grpc_port: 6334
+EOF
+    
+    echo "Config file contents:"
+    cat /tmp/qdrant_config/config.yaml
+    
+    # Start Qdrant server with explicit config
     echo ""
-    echo "Starting Qdrant server..."
+    echo "Starting Qdrant server with config..."
     
-    /qdrant/qdrant &
+    /qdrant/qdrant --config-path /tmp/qdrant_config/config.yaml &
     SERVER_PID=$!
     echo "✓ Server PID: $SERVER_PID"
     
