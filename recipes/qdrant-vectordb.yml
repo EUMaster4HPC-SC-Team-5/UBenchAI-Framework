@@ -32,6 +32,9 @@ volumes:
   - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/qdrant/storage
     container_path: /qdrant/storage
     readonly: false
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/qdrant/snapshots
+    container_path: /qdrant/snapshots
+    readonly: false
 
 healthcheck:
   endpoint: /healthz
@@ -57,26 +60,30 @@ command:
     # Ensure data directory exists
     mkdir -p /qdrant/storage
     chmod 755 /qdrant/storage
+
+    mkdir -p /qdrant/snapshots
+    chmod 755 /qdrant/snapshots
     
     echo "Storage directory: /qdrant/storage"
     ls -la /qdrant/ || echo "Cannot list /qdrant"
     
     # Verify we can write to storage
     echo "Testing write access..."
-    touch /qdrant/storage/test_write && rm /qdrant/storage/test_write && echo "✓ Write access OK" || echo "✗ Write access FAILED"
+    touch /qdrant/storage/test_write && rm /qdrant/storage/test_write && echo "Write access OK" || echo "Write access FAILED"
+    touch /qdrant/snapshots/test_write && rm /qdrant/snapshots/test_write && echo "Snapshots write access OK" || echo "Snapshots write access FAILED"
     
     # Create Qdrant config file to explicitly set storage path
     echo "Creating Qdrant configuration..."
     mkdir -p /tmp/qdrant_config
-    cat > /tmp/qdrant_config/config.yaml << 'EOF'
-storage:
-  storage_path: /qdrant/storage
-
-service:
-  http_port: 6333
-  grpc_port: 6334
-EOF
-    
+    cat > /tmp/qdrant_config/config.yaml <<EOCONFIG
+    storage:
+      storage_path: /qdrant/storage
+      snapshots_path: /qdrant/snapshots
+    service:
+      http_port: 6333
+      grpc_port: 6334
+    EOCONFIG
+   
     echo "Config file contents:"
     cat /tmp/qdrant_config/config.yaml
     
