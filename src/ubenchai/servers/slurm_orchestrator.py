@@ -1,6 +1,5 @@
 """
 SLURM Orchestrator - MeluXina Compatible
-Following LuxProvide Apptainer documentation
 """
 
 import subprocess
@@ -8,6 +7,7 @@ import tempfile
 import os
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 import yaml
 from loguru import logger
 
@@ -27,6 +27,7 @@ class SlurmOrchestrator(Orchestrator):
         qos: Optional[str] = None,
         time_limit: Optional[str] = None,
         config_file: str = "config/slurm.yml",
+        log_directory: str = "logs",
     ):
         """
         Initialize SLURM orchestrator with MeluXina configuration
@@ -37,6 +38,7 @@ class SlurmOrchestrator(Orchestrator):
             qos: Quality of Service (e.g., 'default', 'short')
             time_limit: Job time limit (e.g., '01:00:00')
             config_file: Path to YAML configuration file
+            log_directory: Directory for SLURM log files
         """
 
         # Load dotenv for environment variables
@@ -68,6 +70,10 @@ class SlurmOrchestrator(Orchestrator):
             "apptainer_module", "Apptainer/1.3.6-GCCcore-13.3.0"
         )
 
+        # Log directory configuration
+        self.log_directory = Path(log_directory)
+        self.log_directory.mkdir(parents=True, exist_ok=True)
+
         # Validate required configuration
         if not self.account:
             raise ValueError(
@@ -84,7 +90,8 @@ class SlurmOrchestrator(Orchestrator):
             f"account={self.account}, "
             f"partition={self.partition}, "
             f"qos={self.qos}, "
-            f"time_limit={self.time_limit}"
+            f"time_limit={self.time_limit}, "
+            f"log_directory={self.log_directory}"
         )
 
     def _load_config(self, config_file: str) -> dict:
@@ -111,6 +118,24 @@ class SlurmOrchestrator(Orchestrator):
             logger.warning(f"Failed to load config {config_file}: {e}")
             return {}
 
+    def _generate_log_filename(self, recipe: ServiceRecipe) -> str:
+        """
+        Generate a unique log filename based on service name and timestamp
+
+        Args:
+            recipe: ServiceRecipe containing service name
+
+        Returns:
+            Log filename (e.g., "qdrant-vectordb_20251012_113045_a3f8b2.log")
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Generate a short unique ID (first 6 chars of a UUID-like string)
+        import uuid
+
+        unique_id = str(uuid.uuid4())[:6]
+
+        return f"{recipe.name}_{timestamp}_{unique_id}.log"
+
     def deploy_service(self, recipe: ServiceRecipe) -> str:
         """
         Deploy a service via SLURM sbatch submission
@@ -126,8 +151,12 @@ class SlurmOrchestrator(Orchestrator):
         """
         logger.info(f"Deploying service via SLURM: {recipe.name}")
 
-        # Build SLURM batch script
-        script_content = self._build_batch_script(recipe)
+        # Generate log filename
+        log_filename = self._generate_log_filename(recipe)
+        log_filepath = self.log_directory / log_filename
+
+        # Build SLURM batch script with custom output file
+        script_content = self._build_batch_script(recipe, str(log_filepath))
 
         logger.debug("Generated SLURM batch script:")
         logger.debug("-" * 80)
@@ -138,6 +167,7 @@ class SlurmOrchestrator(Orchestrator):
         try:
             job_id = self._submit_job(script_content)
             logger.info(f"Service deployed successfully - Job ID: {job_id}")
+            logger.info(f"Log file: {log_filepath}")
             return job_id
         except Exception as e:
             logger.error(f"Failed to deploy service: {e}")
@@ -214,8 +244,21 @@ class SlurmOrchestrator(Orchestrator):
         Returns:
             Log contents as string
         """
-        log_file = f"slurm-{handle}.out"
+        # Try to find log file in logs directory
+        log_pattern = f"*_{handle}.log"
+        matching_logs = list(self.log_directory.glob(log_pattern))
 
+        if matching_logs:
+            log_file = matching_logs[0]
+            try:
+                with open(log_file, "r") as f:
+                    return f.read()
+            except Exception as e:
+                logger.error(f"Failed to read log file {log_file}: {e}")
+                return f"Error reading log file: {e}"
+
+        # Fall back to default slurm output file
+        log_file = f"slurm-{handle}.out"
         try:
             if os.path.exists(log_file):
                 with open(log_file, "r") as f:
@@ -240,18 +283,13 @@ class SlurmOrchestrator(Orchestrator):
         logger.warning("Scaling not supported for SLURM orchestrator")
         return False
 
-    def _build_batch_script(self, recipe: ServiceRecipe) -> str:
+    def _build_batch_script(self, recipe: ServiceRecipe, log_filepath: str) -> str:
         """
-        The script will:
-        1. Load required modules (Lmod + Apptainer)
-        2. Prepare host directories for volume mounts
-        3. Set environment variables for container
-        4. Pull container image (if not cached)
-        5. Create startup script from recipe command
-        6. Execute startup script inside container using apptainer exec
+        Build SLURM batch script with custom log file location
 
         Args:
             recipe: ServiceRecipe containing all configuration
+            log_filepath: Full path to the log file
 
         Returns:
             Complete SLURM batch script as string
@@ -265,13 +303,11 @@ class SlurmOrchestrator(Orchestrator):
             gpu_flag = "--nv"  # Enable NVIDIA GPU support
 
         # Build volume bindings
-        # Must include /mnt/tier1 for MeluXina scratch access
         volume_binds = []
         mkdir_commands = []
 
         if recipe.volumes:
             for vol in recipe.volumes:
-                # Host path may contain $SLURM_JOB_ACCOUNT which expands at runtime
                 host_path = vol.host_path
                 volume_binds.append(f"{host_path}:{vol.container_path}")
                 mkdir_commands.append(f"mkdir -p {host_path}")
@@ -289,28 +325,25 @@ class SlurmOrchestrator(Orchestrator):
         # Build environment variables with APPTAINERENV_ prefix
         env_exports = []
         for key, value in recipe.environment.items():
-            # Apptainer reads APPTAINERENV_* variables and passes them into container
             env_exports.append(f'export APPTAINERENV_{key}="{value}"')
         env_section = (
             "\n".join(env_exports) if env_exports else "# No environment variables"
         )
 
         # Extract command from recipe
-        # The recipe.command is a list like ['/bin/bash', '-c', 'script...']
         if recipe.command and len(recipe.command) >= 3 and recipe.command[1] == "-c":
-            # Multi-line bash script
             container_script = recipe.command[2]
         elif recipe.command:
-            # Simple command list
             container_script = " ".join(recipe.command)
         else:
-            # No command specified
             container_script = 'echo "No command specified in recipe"'
 
         # Generate the complete SLURM batch script
         script = f"""#!/bin/bash -l
 
 #SBATCH --job-name={recipe.name}
+#SBATCH --output={log_filepath}
+#SBATCH --error={log_filepath}
 #SBATCH --time={self.time_limit}
 #SBATCH --partition={self.partition}
 #SBATCH --qos={self.qos}
@@ -333,6 +366,7 @@ echo "Partition:  {self.partition}"
 echo "CPUs:       {recipe.resources.cpu_cores}"
 echo "Memory:     {recipe.resources.memory_gb}G"
 echo "GPUs:       {recipe.resources.gpu_count}"
+echo "Log File:   {log_filepath}"
 echo "========================================="
 
 # Initialize Lmod module system (required on MeluXina)
@@ -356,7 +390,6 @@ echo "Preparing host directories..."
 {mkdir_section}
 
 # Set environment variables for container
-# Using APPTAINERENV_ prefix so they're passed into container
 echo "Setting environment variables..."
 {env_section}
 
@@ -390,10 +423,6 @@ echo "Starting Service in Container"
 echo "========================================="
 
 # Run the service inside Apptainer container
-# Following MeluXina best practices:
-#   --nv:   Enable NVIDIA GPU support
-#   --bind: Mount volumes (including /mnt/tier1)
-#   exec:   Run command inside container
 apptainer exec \\
     {gpu_flag} \\
     {bind_flag} \\
@@ -409,6 +438,7 @@ echo "========================================="
 echo "Exit Code: $EXIT_CODE"
 echo "Job ID:    $SLURM_JOB_ID"
 echo "End Time:  $(date)"
+echo "Log File:  {log_filepath}"
 echo "========================================="
 
 # Cleanup temporary files
@@ -447,7 +477,6 @@ exit $EXIT_CODE
             )
 
             # Extract job ID from output
-            # Format: "Submitted batch job 12345"
             output = result.stdout.strip()
             job_id = output.split()[-1]
 

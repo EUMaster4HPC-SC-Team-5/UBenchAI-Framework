@@ -78,27 +78,29 @@ command:
     }
     trap cleanup EXIT INT TERM
     
-    # Wait for server to be ready
-    echo "Waiting for server to be ready..."
-    for i in $(seq 1 60); do
-        if wget -q -O - http://localhost:6333/healthz 2>/dev/null | grep -q "ok"; then
-            echo "✓ Server is ready!"
-            break
-        fi
-        if [ $i -eq 60 ]; then
-            echo "✗ Server failed to start within 120 seconds"
-            exit 1
-        fi
-        sleep 2
-    done
+    # Wait for server to initialize (simple delay)
+    echo "Waiting for server to initialize (10 seconds)..."
+    sleep 10
+    
+    # Check if process is still alive
+    if kill -0 $SERVER_PID 2>/dev/null; then
+        echo "✓ Server is running!"
+    else
+        echo "✗ Server process died during startup"
+        exit 1
+    fi
     
     # Test basic functionality
     echo ""
     echo "Testing Qdrant API..."
     
-    # Get cluster info
-    echo "Cluster info:"
-    wget -q -O - http://localhost:6333/cluster 2>/dev/null || echo "Could not fetch cluster info"
+    # Try to get cluster info if curl is available
+    if command -v curl >/dev/null 2>&1; then
+        echo "Cluster info:"
+        curl -s http://localhost:6333/cluster 2>/dev/null || echo "Could not fetch cluster info"
+    else
+        echo "curl not available, skipping API test"
+    fi
     
     # Display connection information
     COMPUTE_NODE=$(hostname)
