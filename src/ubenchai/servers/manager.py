@@ -125,23 +125,57 @@ class ServerManager:
 
     def stop_service(self, service_id: str) -> bool:
         """
-        Stop a running service
+        Stop a running service by service ID or job ID
 
         Args:
-            service_id: ID of the service to stop
+            service_id: Service UUID or SLURM job ID
 
         Returns:
             True if successful, False otherwise
         """
         logger.info(f"Stopping service: {service_id}")
 
-        # Get service instance
+        # Try to get service instance from registry first
         instance = self.service_registry.get_service(service_id)
-        if not instance:
-            logger.error(f"Service not found: {service_id}")
-            return False
 
-        # Update status
+        # If not in registry, check if it's a job ID by querying SLURM
+        if not instance:
+            logger.debug(f"Service {service_id} not in registry, treating as job ID")
+
+            # Verify it's actually a running SLURM job
+            try:
+                import subprocess
+
+                result = subprocess.run(
+                    ["squeue", "-j", service_id, "--format=%j", "--noheader"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                if result.returncode == 0 and result.stdout.strip():
+                    # It's a valid job, stop it directly
+                    logger.info(f"Found SLURM job {service_id}, stopping it")
+                    try:
+                        success = self.orchestrator.stop_service(service_id)
+                        if success:
+                            logger.info(f"SLURM job stopped successfully: {service_id}")
+                            return True
+                        else:
+                            logger.error(f"Failed to stop SLURM job: {service_id}")
+                            return False
+                    except Exception as e:
+                        logger.error(f"Error stopping SLURM job: {e}")
+                        return False
+                else:
+                    logger.error(f"Service/job not found: {service_id}")
+                    return False
+
+            except Exception as e:
+                logger.error(f"Error checking SLURM job: {e}")
+                return False
+
+        # Service found in registry, proceed with normal flow
         instance.update_status(ServiceStatus.STOPPING)
 
         # Stop via orchestrator

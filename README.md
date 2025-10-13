@@ -1,4 +1,5 @@
 # UBenchAI-Framework: Unified Benchmarking Framework for AI Factory Workloads
+![CI Tests](https://github.com/EUMaster4HPC-SC-Team-5/UBenchAI-Framework/workflows/CI%20-%20Tests%20and%20Linting/badge.svg)
 
 ## Project Overview
 UBenchAI-Framework is a modular benchmarking framework designed to evaluate the performance of AI Factory components on the MeluXina supercomputer. This project is part of the EUMaster4HPC Student Challenge 2025-2026.
@@ -215,6 +216,155 @@ export UBENCHAI_CONFIG_DIR=/path/to/configs
 
 # Run with environment
 poetry run ubenchai server list
+```
+
+## Testing 
+
+```bash
+# Run all tests
+poetry run pytest tests/
+
+# Run specific test file
+poetry run pytest tests/test_services.py
+
+# Run specific test class
+poetry run pytest tests/test_services.py::TestServiceRecipe
+
+# Run specific test function
+poetry run pytest tests/test_services.py::TestServiceRecipe::test_recipe_creation
+
+# Run with verbose output
+poetry run pytest tests/ -v
+
+# Run with extra verbose output (show test names)
+poetry run pytest tests/ -vv
+```
+
+### Running Tests by Category
+
+```bash
+# Run only unit tests
+poetry run pytest tests/ -m unit
+
+# Run only integration tests
+poetry run pytest tests/ -m integration
+
+# Skip slow tests
+poetry run pytest tests/ -m "not slow"
+```
+
+### Running with Coverage
+
+```bash
+# Run tests with coverage report
+poetry run pytest tests/ --cov=src/ubenchai
+
+# With detailed missing lines
+poetry run pytest tests/ --cov=src/ubenchai --cov-report=term-missing
+
+# Generate HTML coverage report
+poetry run pytest tests/ --cov=src/ubenchai --cov-report=html
+
+# Open HTML report
+open htmlcov/index.html  # macOS
+xdg-open htmlcov/index.html  # Linux
+
+```
+## Common Options
+
+```bash
+# Stop on first failure
+poetry run pytest tests/ -x
+
+# Show local variables on failure
+poetry run pytest tests/ -l
+
+# Run last failed tests
+poetry run pytest tests/ --lf
+
+# Run failed tests first, then others
+poetry run pytest tests/ --ff
+
+# Quiet output (less verbose)
+poetry run pytest tests/ -q
+
+# Show print statements
+poetry run pytest tests/ -s
+```
+
+## Debugging Tests
+
+```bash
+# Drop into debugger on failure
+poetry run pytest tests/ --pdb
+
+# Drop into debugger at start of test
+poetry run pytest tests/ --trace
+
+# Show which fixtures are being used
+poetry run pytest tests/ --fixtures
+
+# Show available tests without running
+poetry run pytest tests/ --collect-only
+```
+
+## GitHub Actions
+
+Tests run automatically on GitHub when you:
+- Push to a branch.
+- Create a pull request.
+
+## Writing New Tests
+
+### Test Template
+
+```python
+import pytest
+from ubenchai.servers.services import ServiceRecipe
+
+class TestMyFeature:
+    """Tests for my new feature"""
+
+    @pytest.fixture
+    def sample_data(self):
+        """Fixture providing test data"""
+        return {"key": "value"}
+
+    def test_something(self, sample_data):
+        """Test description"""
+        # Arrange
+        expected = "value"
+        
+        # Act
+        result = sample_data["key"]
+        
+        # Assert
+        assert result == expected
+```
+
+### Test Naming
+
+- Files: `test_*.py`
+- Classes: `Test*`
+- Functions: `test_*`
+
+### Using Markers
+
+```python
+@pytest.mark.unit
+def test_fast_unit_test():
+    """This is a fast unit test"""
+    assert True
+
+@pytest.mark.integration
+def test_component_integration():
+    """This tests multiple components"""
+    assert True
+
+@pytest.mark.slow
+def test_slow_operation():
+    """This test takes time"""
+    assert True
 ```
 
 ## Troubleshooting

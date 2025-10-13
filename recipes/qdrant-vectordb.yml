@@ -1,0 +1,167 @@
+# Qdrant Vector Database for MeluXina
+# Compatible with LuxProvide Apptainer setup
+# Qdrant is a high-performance vector database written in Rust
+
+name: qdrant-vectordb
+description: Qdrant vector database service for embeddings and similarity search
+image: docker://qdrant/qdrant:latest
+
+resources:
+  cpu_cores: 8
+  memory_gb: 16
+  gpu_count: 0
+  disk_gb: 100
+  nodes: 1
+  ntasks: 1
+
+ports:
+  - container_port: 6333
+    host_port: 6333
+    protocol: tcp
+  - container_port: 6334
+    host_port: 6334
+    protocol: tcp
+
+environment:
+  QDRANT__SERVICE__HTTP_PORT: "6333"
+  QDRANT__SERVICE__GRPC_PORT: "6334"
+  QDRANT__STORAGE__STORAGE_PATH: "/qdrant/storage"
+
+volumes:
+  # Project scratch directory for persistent vector storage
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/qdrant/storage
+    container_path: /qdrant/storage
+    readonly: false
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/qdrant/snapshots
+    container_path: /qdrant/snapshots
+    readonly: false
+
+healthcheck:
+  endpoint: /healthz
+  interval_seconds: 15
+  timeout_seconds: 10
+  retries: 3
+  initial_delay: 10
+
+# Command executed INSIDE the Apptainer container
+command:
+  - /bin/sh
+  - -c
+  - |
+    set -e
+    
+    echo "========================================="
+    echo "Qdrant Vector Database Starting"
+    echo "========================================="
+    echo "Hostname: $(hostname)"
+    echo "Date: $(date)"
+    echo "========================================="
+    
+    # Ensure data directory exists
+    mkdir -p /qdrant/storage
+    chmod 755 /qdrant/storage
+
+    mkdir -p /qdrant/snapshots
+    chmod 755 /qdrant/snapshots
+    
+    echo "Storage directory: /qdrant/storage"
+    ls -la /qdrant/ || echo "Cannot list /qdrant"
+    
+    # Verify we can write to storage
+    echo "Testing write access..."
+    touch /qdrant/storage/test_write && rm /qdrant/storage/test_write && echo "Write access OK" || echo "Write access FAILED"
+    touch /qdrant/snapshots/test_write && rm /qdrant/snapshots/test_write && echo "Snapshots write access OK" || echo "Snapshots write access FAILED"
+    
+    # Create Qdrant config file to explicitly set storage path
+    echo "Creating Qdrant configuration..."
+    mkdir -p /tmp/qdrant_config
+    cat > /tmp/qdrant_config/config.yaml <<EOCONFIG
+    storage:
+      storage_path: /qdrant/storage
+      snapshots_path: /qdrant/snapshots
+    service:
+      http_port: 6333
+      grpc_port: 6334
+    EOCONFIG
+   
+    echo "Config file contents:"
+    cat /tmp/qdrant_config/config.yaml
+    
+    # Start Qdrant server with explicit config
+    echo ""
+    echo "Starting Qdrant server with config..."
+    
+    /qdrant/qdrant --config-path /tmp/qdrant_config/config.yaml &
+    SERVER_PID=$!
+    echo "✓ Server PID: $SERVER_PID"
+    
+    # Cleanup function
+    cleanup() {
+        echo ""
+        echo "Shutting down Qdrant server..."
+        kill $SERVER_PID 2>/dev/null || true
+        wait $SERVER_PID 2>/dev/null || true
+        echo "✓ Server stopped"
+    }
+    trap cleanup EXIT INT TERM
+    
+    # Wait for server to initialize (simple delay)
+    echo "Waiting for server to initialize (10 seconds)..."
+    sleep 10
+    
+    # Check if process is still alive
+    if kill -0 $SERVER_PID 2>/dev/null; then
+        echo "✓ Server is running!"
+    else
+        echo "✗ Server process died during startup"
+        exit 1
+    fi
+    
+    # Test basic functionality
+    echo ""
+    echo "Testing Qdrant API..."
+    
+    # Try to get cluster info if curl is available
+    if command -v curl >/dev/null 2>&1; then
+        echo "Cluster info:"
+        curl -s http://localhost:6333/cluster 2>/dev/null || echo "Could not fetch cluster info"
+    else
+        echo "curl not available, skipping API test"
+    fi
+    
+    # Display connection information
+    COMPUTE_NODE=$(hostname)
+    echo ""
+    echo "========================================="
+    echo "Qdrant Vector Database Ready!"
+    echo "========================================="
+    echo "REST API:  http://${COMPUTE_NODE}:6333"
+    echo "gRPC API:  http://${COMPUTE_NODE}:6334"
+    echo "Dashboard: http://${COMPUTE_NODE}:6333/dashboard"
+    echo ""
+    echo "Test from login node or other jobs:"
+    echo "  curl http://${COMPUTE_NODE}:6333/healthz"
+    echo "  curl http://${COMPUTE_NODE}:6333/collections"
+    echo ""
+    echo "Python client example:"
+    echo "  from qdrant_client import QdrantClient"
+    echo "  client = QdrantClient(host='${COMPUTE_NODE}', port=6333)"
+    echo "  client.get_collections()"
+    echo ""
+    echo "Create a collection example:"
+    echo "  curl -X PUT http://${COMPUTE_NODE}:6333/collections/test_collection \\"
+    echo "    -H 'Content-Type: application/json' \\"
+    echo "    -d '{\"vectors\": {\"size\": 384, \"distance\": \"Cosine\"}}'"
+    echo ""
+    echo "Storage: /project/scratch/\$SLURM_JOB_ACCOUNT/team-5/qdrant/storage"
+    echo "Job will run until time limit or manual cancellation"
+    echo "========================================="
+    
+    # Keep container alive - wait for server process
+    wait $SERVER_PID
+    EXIT_CODE=$?
+    echo ""
+    echo "Server exited with code: $EXIT_CODE"
+    exit $EXIT_CODE
+
+working_dir: /qdrant
