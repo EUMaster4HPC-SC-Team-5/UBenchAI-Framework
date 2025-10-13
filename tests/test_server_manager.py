@@ -122,13 +122,13 @@ class TestServerManager:
     ):
         """Test successfully stopping a service"""
         self.create_recipe_file(temp_recipe_dir, "test-service", valid_recipe_data)
-        
+
         # Start service first
         instance = manager_with_mock.start_service("test-service")
-        
+
         # Stop service
         result = manager_with_mock.stop_service(instance.id)
-        
+
         assert result is True
         mock_orchestrator.stop_service.assert_called()
 
@@ -136,12 +136,10 @@ class TestServerManager:
         """Test stopping service by job ID"""
         with patch("subprocess.run") as mock_run:
             # Mock squeue to show job exists
-            mock_run.return_value = Mock(
-                returncode=0, stdout="test-job\n", stderr=""
-            )
-            
+            mock_run.return_value = Mock(returncode=0, stdout="test-job\n", stderr="")
+
             result = manager_with_mock.stop_service("12345")
-            
+
             assert result is True
             mock_orchestrator.stop_service.assert_called_with("12345")
 
@@ -150,9 +148,9 @@ class TestServerManager:
         with patch("subprocess.run") as mock_run:
             # Mock squeue to show job doesn't exist
             mock_run.return_value = Mock(returncode=1, stdout="", stderr="")
-            
+
             result = manager_with_mock.stop_service("nonexistent")
-            
+
             assert result is False
 
     def test_list_available_services(
@@ -176,9 +174,9 @@ class TestServerManager:
                 stdout="12345|test-service|RUNNING|2025-10-13T10:00:00\n",
                 stderr="",
             )
-            
+
             services = manager_with_mock.list_running_services()
-            
+
             assert len(services) == 1
             assert services[0]["id"] == "12345"
             assert services[0]["recipe_name"] == "test-service"
