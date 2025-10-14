@@ -231,6 +231,37 @@ def handle_monitor_commands(args):
     # TODO: Initialize and run MonitorManager based on args.action
 
 
+def handle_report_commands(args):
+    """Handle report subcommands"""
+    from ubenchai.reports.manager import ReportManager
+
+    manager = ReportManager(recipe_directory="recipes", output_root="reports_output")
+
+    if args.action == "list":
+        reports = manager.list_available_reports()
+        print("\n Available Report Recipes:")
+        if reports:
+            for r in reports:
+                print(f"   • {r}")
+        else:
+            print("   No report recipes found")
+    elif args.action == "start":
+        logger.info(f"Starting report from recipe: {args.recipe}")
+        job = manager.start_report(args.recipe)
+        print("\n Report started:")
+        print(f"   Job ID: {job.id}")
+        print(f"   Status: {job.status.value}")
+        print(f"   Output: {job.output_dir}")
+    elif args.action == "status":
+        status = manager.get_job_status(args.job_id)
+        print("\n Report Status:")
+        print(f"   Job ID: {status['id']}")
+        print(f"   Recipe: {status['recipe_name']}")
+        print(f"   Status: {status['status']}")
+        print(f"   Output Dir: {status['output_dir']}")
+    else:
+        raise ValueError("Unknown report action")
+
 def create_parser():
     """Create and configure argument parser"""
     parser = argparse.ArgumentParser(
@@ -372,6 +403,29 @@ For more information, visit:
         help="Report format (default: html)",
     )
 
+    # Report subcommand (standalone reports from saved metrics)
+    report_parser = subparsers.add_parser("report", help="Generate and manage reports")
+    report_subparsers = report_parser.add_subparsers(
+        dest="action", help="Report actions", required=True
+    )
+
+    # Report list
+    report_subparsers.add_parser("list", help="List available report recipes")
+
+    # Report start
+    report_start = report_subparsers.add_parser(
+        "start", help="Start a report generation job from a recipe"
+    )
+    report_start.add_argument(
+        "--recipe", required=True, help="Name of the report recipe to run"
+    )
+
+    # Report status
+    report_status = report_subparsers.add_parser(
+        "status", help="Get status of a report job"
+    )
+    report_status.add_argument("job_id", help="Report job ID")
+
     return parser
 
 
@@ -392,6 +446,8 @@ def main():
         handle_client_commands(args)
     elif args.command == "monitor":
         handle_monitor_commands(args)
+    elif args.command == "report":
+        handle_report_commands(args)
 
 
 if __name__ == "__main__":
