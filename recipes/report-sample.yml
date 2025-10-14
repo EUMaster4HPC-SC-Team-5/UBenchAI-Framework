@@ -1,0 +1,17 @@
+name: sample-report
+description: Sample report aggregating metrics from example JSON files
+outputs:
+  - html
+  - json
+metrics_sources:
+  - name: service_metrics
+    type: file
+    path: examples/ElizabethVK/slurm-3614013.out
+  - name: client_metrics
+    type: file
+    path: examples/ElizabethVK/slurm-3614042.out
+comparisons:
+  - type: diff
+    left: service_metrics
+    right: client_metrics
+
