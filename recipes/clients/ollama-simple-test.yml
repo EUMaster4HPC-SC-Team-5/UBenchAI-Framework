@@ -3,7 +3,7 @@ description: Simple test benchmark for Ollama LLM service
 
 target:
   service: ollama-llm  # Will auto-discover via SLURM
-  # endpoint: "http://mel2067:11434"  # Or specify directly
+  # endpoint: "http://${COMPUTE_NODE}:11434"  
   protocol: http
   timeout_seconds: 30
 
