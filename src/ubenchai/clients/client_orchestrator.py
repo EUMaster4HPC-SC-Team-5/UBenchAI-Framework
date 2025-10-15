@@ -162,19 +162,20 @@ class ClientOrchestrator:
         Build SLURM batch script for client run
 
         Args:
-            run: ClientRun
+            run: ClientRun instance
             recipe: ClientRecipe
-            target_endpoint: Target endpoint
+            target_endpoint: Resolved target endpoint
 
         Returns:
-            Batch script content
+            Complete SLURM batch script as string
         """
-        # Get resources from orchestration spec
         resources = recipe.orchestration.resources
         cpu_cores = resources.get("cpu_cores", 1)
         memory_gb = resources.get("memory_gb", 4)
 
-        # Build script
+        # Build workload generator command
+        workload_cmd = self._build_workload_command(recipe, target_endpoint, run)
+
         script = f"""#!/bin/bash -l
 
 #SBATCH --job-name={recipe.name}_{run.id[:8]}
@@ -188,7 +189,7 @@ class ClientOrchestrator:
 #SBATCH --mem={memory_gb}G
 
 echo "========================================="
-echo "UBenchAI Client Run"
+echo "UBenchAI Client Benchmark"
 echo "========================================="
 echo "Date              = $(date)"
 echo "Hostname          = $(hostname -s)"
@@ -199,33 +200,83 @@ echo "Recipe            = {recipe.name}"
 echo "Target            = {target_endpoint}"
 echo "========================================="
 
-# Load Python module
+# Load Python environment
 source /usr/share/lmod/lmod/init/bash
 module load env/release/2024.1
 module load Python/3.12.3-GCCcore-13.3.0
 
-# Activate virtual environment (if using Poetry)
+# Navigate to project directory
 cd {os.getcwd()}
+
+# Activate Poetry environment
 export PATH="$HOME/.local/bin:$PATH"
+eval $(poetry env activate)
 
-# Run the benchmark client
-# TODO: Implement actual benchmark workload generation
-echo "Starting benchmark client..."
-echo "Pattern: {recipe.workload.pattern}"
-echo "Duration: {recipe.workload.duration_seconds}s"
-echo "Concurrent users: {recipe.workload.concurrent_users}"
+# Create output directory
+OUTPUT_DIR="{run.artifacts_dir or './results'}"
+mkdir -p "$OUTPUT_DIR"
 
-# For now, a simple test with curl
-echo "Testing connectivity to target..."
-curl -s {target_endpoint}/api/tags || echo "Failed to connect"
+# Run benchmark workload
+echo ""
+echo "Starting benchmark workload..."
+{workload_cmd}
 
-# TODO: Generate actual workload based on recipe
-# This will be implemented in the next phase
+EXIT_CODE=$?
 
-echo "Benchmark completed"
+echo ""
+echo "========================================="
+echo "Benchmark Completed"
+echo "========================================="
+echo "Exit Code: $EXIT_CODE"
+echo "Results:   $OUTPUT_DIR"
+echo "========================================="
+
+exit $EXIT_CODE
+"""
+        return script
+
+    def _build_workload_command(
+        self, recipe: ClientRecipe, target_endpoint: str, run: ClientRun
+    ) -> str:
+        """
+        Build workload generator command based on recipe
+
+        Args:
+            recipe: ClientRecipe
+            target_endpoint: Target endpoint URL
+            run: ClientRun instance
+
+        Returns:
+            Command string to execute workload
+        """
+        output_dir = run.artifacts_dir or "./results"
+        output_file = f"{output_dir}/{recipe.name}_{run.id[:8]}_results.json"
+
+        # Get workload parameters
+        pattern = recipe.workload.pattern
+        duration = recipe.workload.duration_seconds
+        concurrent_users = recipe.workload.concurrent_users
+        think_time = recipe.workload.think_time_ms
+
+        # Get dataset parameters
+        prompt_length = recipe.dataset.params.get("prompt_length", 50)
+
+        # Build command
+        cmd = f"""python -m ubenchai.clients.workload_generator \\
+    --endpoint "{target_endpoint}" \\
+    --pattern "{pattern}" \\
+    --duration {duration} \\
+    --concurrent-users {concurrent_users} \\
+    --think-time {think_time} \\
+    --prompt-length {prompt_length} \\
+    --output "{output_file}"
 """
 
-        return script
+        # Add open-loop specific parameters
+        if pattern == "open-loop" and recipe.workload.requests_per_second:
+            cmd += f"    --requests-per-second {recipe.workload.requests_per_second} \\\n"
+
+        return cmd
 
     def _submit_job(self, script_content: str) -> str:
         """
