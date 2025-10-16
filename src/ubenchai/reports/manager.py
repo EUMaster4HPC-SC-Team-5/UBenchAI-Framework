@@ -16,7 +16,9 @@ from .recipe_loader import ReportRecipeLoader
 
 
 class ReportManager:
-    def __init__(self, recipe_directory: str = "recipes", output_root: str = "reports_output"):
+    def __init__(
+        self, recipe_directory: str = "recipes", output_root: str = "reports_output"
+    ):
         self.recipe_loader = ReportRecipeLoader(recipe_directory=recipe_directory)
         self.output_root = Path(output_root)
         self.output_root.mkdir(parents=True, exist_ok=True)
@@ -26,12 +28,16 @@ class ReportManager:
     def list_available_reports(self) -> List[str]:
         return self.recipe_loader.list_available_recipes()
 
-    def start_report(self, recipe_name: str, metadata: Optional[Dict] = None) -> ReportJob:
+    def start_report(
+        self, recipe_name: str, metadata: Optional[Dict] = None
+    ) -> ReportJob:
         recipe = self.recipe_loader.load_recipe(recipe_name)
         job_id = str(uuid.uuid4())
         output_dir = self.output_root / job_id
         output_dir.mkdir(parents=True, exist_ok=True)
-        job = ReportJob(id=job_id, recipe=recipe, output_dir=output_dir, metadata=metadata or {})
+        job = ReportJob(
+            id=job_id, recipe=recipe, output_dir=output_dir, metadata=metadata or {}
+        )
         job.status = ReportJobStatus.RUNNING
         self._jobs[job_id] = job
         logger.info(f"Report job started: {job_id} ({recipe.name})")
@@ -76,7 +82,9 @@ class ReportManager:
                 logger.warning(f"Unsupported metrics source type: {src_type}")
         return aggregated
 
-    def _render_outputs(self, recipe: ReportRecipe, job: ReportJob, aggregated: Dict) -> None:
+    def _render_outputs(
+        self, recipe: ReportRecipe, job: ReportJob, aggregated: Dict
+    ) -> None:
         for fmt in recipe.outputs:
             if fmt is ReportFormat.JSON:
                 self._render_json(job, aggregated)
@@ -95,7 +103,9 @@ class ReportManager:
     def _render_html(self, job: ReportJob, data: Dict) -> Path:
         output = job.output_dir / "report.html"
         title = f"UBenchAI Report - {job.recipe.name}"
-        body = "<h1>" + title + "</h1>" + "<pre>" + json.dumps(data, indent=2) + "</pre>"
+        body = (
+            "<h1>" + title + "</h1>" + "<pre>" + json.dumps(data, indent=2) + "</pre>"
+        )
         html = """<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>{}</title></head><body>{}</body></html>""".format(
             title, body
         )
@@ -110,4 +120,3 @@ class ReportManager:
             f.write("PDF generation not yet implemented. Use HTML/JSON.\n")
         logger.info(f"Wrote PDF stub: {output}")
         return output
-

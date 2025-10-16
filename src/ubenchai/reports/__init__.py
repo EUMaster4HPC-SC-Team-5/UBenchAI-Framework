@@ -7,4 +7,3 @@ of reports in multiple formats (HTML, JSON, PDF stub).
 
 from .manager import ReportManager
 from .models import ReportFormat, ReportJobStatus
-

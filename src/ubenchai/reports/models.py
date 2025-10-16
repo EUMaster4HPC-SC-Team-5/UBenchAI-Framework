@@ -24,6 +24,12 @@ class ReportJobStatus(str, Enum):
     FAILED = "failed"
 
 
+class ReportValidationError(Exception):
+    """Custom exception for report validation failures"""
+
+    pass
+
+
 @dataclass
 class ReportRecipe:
     name: str
@@ -61,7 +67,9 @@ class ReportRecipe:
 
     def validate(self) -> None:
         if not self.metrics_sources:
-            raise ValueError("Report recipe must define at least one metrics_sources entry")
+            raise ValueError(
+                "Report recipe must define at least one metrics_sources entry"
+            )
 
 
 @dataclass
@@ -82,4 +90,3 @@ class ReportJob:
             "output_dir": str(self.output_dir),
             "metadata": self.metadata,
         }
-
