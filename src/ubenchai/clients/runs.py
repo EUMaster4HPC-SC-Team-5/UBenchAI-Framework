@@ -53,6 +53,7 @@ class ClientRun:
 
     def __post_init__(self):
         """Post-initialization validation"""
+
     if not self.recipe_name:
         raise ValueError("Recipe name is required")
 
@@ -91,7 +92,9 @@ class ClientRun:
             "status": self.status.value,
             "duration_seconds": duration,
             "created_at": self.created_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
             "target_endpoint": self.target_endpoint,
         }
 
@@ -102,7 +105,9 @@ class ClientRun:
             "recipe_name": self.recipe_name,
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
             "orchestrator_handle": self.orchestrator_handle,
             "artifacts_dir": self.artifacts_dir,
             "target_endpoint": self.target_endpoint,
@@ -117,9 +122,11 @@ class ClientRun:
             recipe_name=data["recipe_name"],
             status=RunStatus(data["status"]),
             created_at=datetime.fromisoformat(data["created_at"]),
-            completed_at=datetime.fromisoformat(data["completed_at"])
-            if data.get("completed_at")
-            else None,
+            completed_at=(
+                datetime.fromisoformat(data["completed_at"])
+                if data.get("completed_at")
+                else None
+            ),
             orchestrator_handle=data["orchestrator_handle"],
             artifacts_dir=data.get("artifacts_dir"),
             target_endpoint=data.get("target_endpoint"),

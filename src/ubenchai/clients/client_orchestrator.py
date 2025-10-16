@@ -260,7 +260,7 @@ exit $EXIT_CODE
 
         # Get dataset parameters
         prompt_length = recipe.dataset.params.get("prompt_length", 50)
-        
+
         # Get model name (default to tinyllama if not specified)
         model_name = recipe.dataset.params.get("model_name", "tinyllama")
 
@@ -278,7 +278,9 @@ exit $EXIT_CODE
 
         # Add open-loop specific parameters
         if pattern == "open-loop" and recipe.workload.requests_per_second:
-            cmd += f"    --requests-per-second {recipe.workload.requests_per_second} \\\n"
+            cmd += (
+                f"    --requests-per-second {recipe.workload.requests_per_second} \\\n"
+            )
 
         return cmd
 

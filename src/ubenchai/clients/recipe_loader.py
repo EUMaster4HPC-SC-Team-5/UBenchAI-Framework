@@ -169,9 +169,7 @@ class ClientRecipeLoader:
                 "description": data.get("description", "No description"),
                 "file_path": str(recipe_path),
                 "target_service": data.get("target", {}).get("service", "unknown"),
-                "workload_pattern": data.get("workload", {}).get(
-                    "pattern", "unknown"
-                ),
+                "workload_pattern": data.get("workload", {}).get("pattern", "unknown"),
             }
         except Exception as e:
             logger.error(f"Failed to get recipe info for {name}: {e}")
