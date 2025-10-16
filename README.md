@@ -185,9 +185,40 @@ poetry run ubenchai monitor start --recipe test-monitor
 
 #### Reporting Module
 ```bash
-# Test report generation
+# List available report recipes
+poetry run ubenchai report list
+
+# Generate a report from a saved-report recipe
+poetry run ubenchai report start --recipe <report-recipe>
+
+# Check report job status
+poetry run ubenchai report status <job-id>
+
+# Generate a report from a monitor run (shortcut)
 poetry run ubenchai monitor report <monitor-id> --format html
 ```
+
+#### Report Recipes
+Report recipes are YAML files placed in `recipes/` describing where metrics are loaded from and which outputs to render. Minimal schema:
+
+```yaml
+name: my-report
+description: Optional description
+outputs: [html, json, pdf]
+metrics_sources:
+  - name: run1
+    type: file
+    path: path/to/metrics.json
+  - name: run2
+    type: file
+    path: path/to/other.json
+comparisons:
+  - type: diff
+    left: run1
+    right: run2
+```
+
+Outputs are saved to `reports_output/<job-id>/` as `report.html`, `report.json`.
 
 ## Logging
 

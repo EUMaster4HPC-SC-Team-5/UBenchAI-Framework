@@ -46,4 +46,3 @@ class ReportRecipeLoader:
         self._cache[name] = recipe
         logger.info(f"Loaded report recipe: {name}")
         return recipe
-

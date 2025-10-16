@@ -262,6 +262,7 @@ def handle_report_commands(args):
     else:
         raise ValueError("Unknown report action")
 
+
 def create_parser():
     """Create and configure argument parser"""
     parser = argparse.ArgumentParser(
