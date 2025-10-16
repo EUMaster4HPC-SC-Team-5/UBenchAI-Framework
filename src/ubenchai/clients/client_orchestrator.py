@@ -260,10 +260,14 @@ exit $EXIT_CODE
 
         # Get dataset parameters
         prompt_length = recipe.dataset.params.get("prompt_length", 50)
+        
+        # Get model name (default to tinyllama if not specified)
+        model_name = recipe.dataset.params.get("model_name", "tinyllama")
 
         # Build command
         cmd = f"""python -m ubenchai.clients.workload_generator \\
     --endpoint "{target_endpoint}" \\
+    --model "{model_name}" \\
     --pattern "{pattern}" \\
     --duration {duration} \\
     --concurrent-users {concurrent_users} \\

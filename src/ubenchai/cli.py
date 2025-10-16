@@ -132,12 +132,17 @@ def handle_server_commands(args):
 
 def handle_client_commands(args):
     """Handle client subcommands"""
+    logger.debug(f"handle_client_commands called with action: {args.action}")
+    
     from ubenchai.clients.manager import ClientManager
     
+    logger.debug("Creating ClientManager")
     manager = ClientManager(recipe_directory="recipes/clients")
+    logger.debug("ClientManager created successfully")
     
     try:
         if args.action == "run":
+            logger.debug(f"Running client with recipe: {args.recipe}")
             logger.info(f"Starting client from recipe: {args.recipe}")
             run = manager.start_client(args.recipe)
             
@@ -204,15 +209,16 @@ def handle_client_commands(args):
         sys.exit(1)
     except ValueError as e:
         print(f"\n✗ Validation Error: {e}")
+        logger.exception("Validation error details:")
         sys.exit(1)
     except RuntimeError as e:
         print(f"\n✗ Runtime Error: {e}")
+        logger.exception("Runtime error details:")
         sys.exit(1)
     except Exception as e:
         logger.exception("Unexpected error")
         print(f"\n✗ Unexpected Error: {e}")
         sys.exit(1)
-
 
 def handle_monitor_commands(args):
     """Handle monitor subcommands"""

@@ -9,8 +9,6 @@ from loguru import logger
 from ubenchai.clients.runs import ClientRun, RunRegistry, RunStatus
 from ubenchai.clients.recipes import ClientRecipe
 from ubenchai.clients.recipe_loader import ClientRecipeLoader
-from ubenchai.clients.health_resolver import HealthResolver
-from ubenchai.clients.client_orchestrator import ClientOrchestrator
 
 
 class ClientManager:
@@ -33,14 +31,24 @@ class ClientManager:
         # Initialize components
         self.recipe_loader = ClientRecipeLoader(recipe_directory=recipe_directory)
         self.run_registry = RunRegistry()
-        self.health_resolver = HealthResolver()
         
-        # ✅ LAZY LOADING: Don't initialize orchestrator immediately
-        # It will be created when needed (e.g., in start_client)
-        # This allows read-only commands (list, status) to work without SLURM
+        # ✅ LAZY LOADING: Initialize these only when needed
+        self._health_resolver = None
         self._orchestrator = None
 
         logger.info("ClientManager initialization complete")
+
+    @property
+    def health_resolver(self):
+        """
+        Lazy-load health resolver only when needed.
+        This allows read-only commands to work without external dependencies.
+        """
+        if self._health_resolver is None:
+            logger.debug("Initializing HealthResolver (lazy loading)")
+            from ubenchai.clients.health_resolver import HealthResolver
+            self._health_resolver = HealthResolver()
+        return self._health_resolver
 
     @property
     def orchestrator(self):
@@ -52,6 +60,7 @@ class ClientManager:
         """
         if self._orchestrator is None:
             logger.debug("Initializing ClientOrchestrator (lazy loading)")
+            from ubenchai.clients.client_orchestrator import ClientOrchestrator
             self._orchestrator = ClientOrchestrator()
         return self._orchestrator
 
@@ -104,21 +113,44 @@ class ClientManager:
                 f"Target endpoint not reachable: {resolved_target.endpoint}"
             )
 
-        # Create run instance (before deployment to get ID)
-        run = ClientRun(
-            recipe_name=recipe.name,
-            orchestrator_handle="",  # Will be set after deployment
-            target_endpoint=resolved_target.endpoint,
-        )
+        logger.debug(f"About to create temporary run with recipe_name={recipe.name}, orchestrator_handle='pending', target_endpoint={resolved_target.endpoint}")
 
-        # Deploy via orchestrator (orchestrator is initialized here via property)
+        # Deploy via orchestrator FIRST to get the job ID
+        # We need to create a temporary run just to pass to the orchestrator
         try:
-            job_id = self.orchestrator.submit(run, recipe, resolved_target.endpoint)
-            run.orchestrator_handle = job_id
+            temp_run = ClientRun(
+                recipe_name=recipe.name,
+                orchestrator_handle="pending",  # Temporary placeholder
+                target_endpoint=resolved_target.endpoint,
+            )
+            logger.debug(f"Temporary run created successfully: {temp_run.id}")
+        except ValueError as e:
+            logger.error(f"Failed to create temporary run: {e}", exc_info=True)
+            raise
+        
+        logger.debug("About to call orchestrator.submit()")
+        try:
+            job_id = self.orchestrator.submit(temp_run, recipe, resolved_target.endpoint)
             logger.info(f"Client deployed with job ID: {job_id}")
         except Exception as e:
-            logger.error(f"Failed to deploy client: {e}")
+            logger.error(f"Failed to deploy client: {e}", exc_info=True)
             raise RuntimeError(f"Client deployment failed: {e}")
+
+        logger.debug(f"About to create final run with job_id={job_id}")
+        # NOW create the real run instance with the valid orchestrator_handle
+        try:
+            run = ClientRun(
+                recipe_name=recipe.name,
+                orchestrator_handle=job_id,  # Use the job ID from deployment
+                target_endpoint=resolved_target.endpoint,
+            )
+            logger.debug(f"Final run created successfully: {run.id}")
+        except ValueError as e:
+            logger.error(f"Failed to create final run: {e}", exc_info=True)
+            raise
+        
+        # Preserve the ID from the temporary run
+        run.id = temp_run.id
 
         # Register run
         if not self.run_registry.register(run):
@@ -157,17 +189,18 @@ class ClientManager:
         # Update status
         run.update_status(RunStatus.CANCELED)
 
-        # Stop via orchestrator
-        try:
-            success = self.orchestrator.stop(run.orchestrator_handle)
-            if not success:
-                logger.error(f"Orchestrator failed to stop run: {run_id}")
+        # Stop via orchestrator (only if initialized)
+        if self._orchestrator is not None:
+            try:
+                success = self.orchestrator.stop(run.orchestrator_handle)
+                if not success:
+                    logger.error(f"Orchestrator failed to stop run: {run_id}")
+                    run.update_status(RunStatus.FAILED)
+                    return False
+            except Exception as e:
+                logger.error(f"Error stopping run: {e}")
                 run.update_status(RunStatus.FAILED)
                 return False
-        except Exception as e:
-            logger.error(f"Error stopping run: {e}")
-            run.update_status(RunStatus.FAILED)
-            return False
 
         logger.info(f"Client run stopped successfully: {run_id}")
         return True

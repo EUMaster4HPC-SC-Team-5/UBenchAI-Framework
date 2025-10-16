@@ -3,7 +3,6 @@ description: Simple test benchmark for Ollama LLM service
 
 target:
   service: ollama-llm  # Will auto-discover via SLURM
-  # endpoint: "http://mel2067:11434"  # Or specify directly
   protocol: http
   timeout_seconds: 30
 
@@ -18,6 +17,7 @@ dataset:
   params:
     prompt_length: 50
     num_prompts: 100
+    model_name: tinyllama
 
 orchestration:
   mode: slurm

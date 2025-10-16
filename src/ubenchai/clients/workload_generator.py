@@ -89,7 +89,7 @@ class WorkloadGenerator:
         self.model_name = model_name
         self.timeout = timeout
         
-        logger.info(f"WorkloadGenerator initialized: {self.target_endpoint}")
+        logger.info(f"WorkloadGenerator initialized: {self.target_endpoint}, model={self.model_name}")
     
     def generate_prompt(self, prompt_length: int = 50) -> str:
         """Generate a synthetic prompt"""
@@ -211,7 +211,7 @@ class WorkloadGenerator:
             think_time_ms: Think time between requests (milliseconds)
             prompt_length: Length of generated prompts
         """
-        logger.info(f"Starting closed-loop workload: {concurrent_users} users, {duration_seconds}s")
+        logger.info(f"Starting closed-loop workload: {concurrent_users} users, {duration_seconds}s, model={self.model_name}")
         
         result = WorkloadResult()
         result.start_time = datetime.now()
@@ -265,7 +265,7 @@ class WorkloadGenerator:
             requests_per_second: Target request rate
             prompt_length: Length of generated prompts
         """
-        logger.info(f"Starting open-loop workload: {requests_per_second} RPS, {duration_seconds}s")
+        logger.info(f"Starting open-loop workload: {requests_per_second} RPS, {duration_seconds}s, model={self.model_name}")
         
         result = WorkloadResult()
         result.start_time = datetime.now()
