@@ -1,0 +1,15 @@
+{
+  "id": "081ba8f4-b0a0-48c7-ad4d-aaec4b8c8c0f",
+  "recipe": {
+    "name": "monitor-local",
+    "description": "Local system metrics monitoring using psutil"
+  },
+  "status": "STARTING",
+  "created_at": "2025-10-22T09:55:28.131520Z",
+  "prometheus_url": null,
+  "grafana_url": null,
+  "targets": [
+    "mynode1"
+  ],
+  "metadata": {}
+}

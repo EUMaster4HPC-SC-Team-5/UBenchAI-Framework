@@ -1,0 +1,20 @@
+{
+  "job": {
+    "id": "a45e5a35-fb72-4979-af28-fb571f47b385",
+    "recipe_name": "sample-report",
+    "status": "running",
+    "created_at": "2025-10-14T12:34:40.123776",
+    "output_dir": "reports_output\\a45e5a35-fb72-4979-af28-fb571f47b385",
+    "metadata": {}
+  },
+  "data": {
+    "sources": {
+      "service_metrics": {
+        "raw_path": "examples\\ElizabethVK\\slurm-3614013.out"
+      },
+      "client_metrics": {
+        "raw_path": "examples\\ElizabethVK\\slurm-3614042.out"
+      }
+    }
+  }
+}
