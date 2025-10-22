@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ job.recipe_name if job else 'UBenchAI Report' }}</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 24px; color: #111; }
+    header { margin-bottom: 24px; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    .meta { color: #666; font-size: 14px; }
+    pre { background: #f6f8fa; padding: 12px; border-radius: 6px; overflow: auto; }
+    .section { margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>UBenchAI Report - {{ job.recipe_name if job else '' }}</h1>
+    <div class="meta">Job ID: {{ job.id if job else '' }} • Created: {{ job.created_at if job else '' }}</div>
+  </header>
+
+  {% block content %}{% endblock %}
+
+</body>
+</html>
+
+

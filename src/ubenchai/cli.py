@@ -139,7 +139,58 @@ def handle_client_commands(args):
 def handle_monitor_commands(args):
     """Handle monitor subcommands"""
     logger.info(f"Monitor Module - Action: {args.action}")
-    # TODO: Initialize and run MonitorManager based on args.action
+    from ubenchai.monitors.manager import MonitorManager
+
+    manager = MonitorManager(recipe_directory="recipes", output_root="logs")
+
+    if args.action == "start":
+        targets = []
+        if args.targets:
+            targets = [t.strip() for t in args.targets.split(",") if t.strip()]
+        inst = manager.start_monitor(args.recipe, targets=targets, mode=args.mode)
+        print("\n Monitor started:")
+        print(f"   Monitor ID: {inst.id}")
+        print(f"   Recipe: {inst.recipe.name}")
+        print(f"   Status: {inst.status}")
+        if inst.grafana_url:
+            print(f"   Grafana: {inst.grafana_url}")
+        if inst.prometheus_url:
+            print(f"   Prometheus: {inst.prometheus_url}")
+    elif args.action == "stop":
+        ok = manager.stop_monitor(args.monitor_id)
+        if ok:
+            print(f"\n Monitor stopped: {args.monitor_id}")
+        else:
+            print(f"\n Monitor not found: {args.monitor_id}")
+    elif args.action == "list":
+        print("\n Available Monitor Recipes:")
+        recs = manager.list_available_recipes()
+        if recs:
+            for r in recs:
+                print(f"   • {r}")
+        else:
+            print("   No monitor recipes found")
+
+        print("\n Running Monitors:")
+        mons = manager.list_running_monitors()
+        if mons:
+            table = []
+            for m in mons:
+                table.append([m["id"][:8], m["recipe"]["name"], m["status"], m["created_at"]])
+            print(tabulate(table, headers=["Monitor ID", "Recipe", "Status", "Created"], tablefmt="simple"))
+        else:
+            print("   No running monitors")
+    elif args.action == "metrics":
+        path = manager.export_metrics(args.monitor_id, output=args.output)
+        print("\n Metrics exported:")
+        print(f"   File: {path}")
+    elif args.action == "report":
+        # For now, just export metrics; users can run separate report command
+        path = manager.export_metrics(args.monitor_id)
+        print("\n Generated metrics snapshot for reporting:")
+        print(f"   File: {path}")
+    else:
+        raise ValueError("Unknown monitor action")
 
 
 def handle_report_commands(args):
@@ -283,6 +334,12 @@ For more information, visit:
     )
     monitor_start.add_argument(
         "--targets", help="Comma-separated list of target services to monitor"
+    )
+    monitor_start.add_argument(
+        "--mode",
+        choices=["local", "slurm"],
+        default="local",
+        help="Run mode: local (default) or slurm",
     )
 
     # Monitor stop
