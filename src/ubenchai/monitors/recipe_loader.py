@@ -46,6 +46,3 @@ class MonitorRecipeLoader:
         self._cache[name] = recipe
         logger.info(f"Loaded monitor recipe: {name}")
         return recipe
-
-
-

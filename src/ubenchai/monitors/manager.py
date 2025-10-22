@@ -123,7 +123,7 @@ class MonitorManager:
 
         out_dir = self.output_root / "monitors" / instance.id
         out_dir.mkdir(parents=True, exist_ok=True)
-        output_path = Path(output_override) if output_override else out_dir / "metrics.json"
+        output_path = (
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(snapshot, f, indent=2)
         logger.info(f"Wrote monitor metrics: {output_path}")

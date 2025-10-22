@@ -265,8 +265,16 @@ def handle_monitor_commands(args):
         if mons:
             table = []
             for m in mons:
-                table.append([m["id"][:8], m["recipe"]["name"], m["status"], m["created_at"]])
-            print(tabulate(table, headers=["Monitor ID", "Recipe", "Status", "Created"], tablefmt="simple"))
+                table.append(
+                    [m["id"][:8], m["recipe"]["name"], m["status"], m["created_at"]]
+                )
+            print(
+                tabulate(
+                    table,
+                    headers=["Monitor ID", "Recipe", "Status", "Created"],
+                    tablefmt="simple",
+                )
+            )
         else:
             print("   No running monitors")
     elif args.action == "metrics":
