@@ -56,7 +56,7 @@ groups = ["main"]
 files = [
     {file = "certifi-2025.10.5-py3-none-any.whl", hash = "sha256:0f212c2744a9bb6de0c56639a6f68afe01ecd92d91f14ae897c4fe7bbeeef0de"},
     {file = "certifi-2025.10.5.tar.gz", hash = "sha256:47c09d31ccf2acf0be3f701ea53595ee7e0b8fa08801c6624be771df09ae7b43"},
-] 
+]
 
 [[package]]
 name = "charset-normalizer"
@@ -825,4 +825,4 @@ dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "535dbe29e0a72ee1890c056d1d63e63f5e7711a5b41586ce08aee61fdace54ef"
+content-hash = "6a4284d78be03a3dd0305833320e3472ea1ae7847a7086e6a9146d380be743e2"
