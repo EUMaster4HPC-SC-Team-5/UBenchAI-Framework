@@ -81,6 +81,3 @@ class MonitorInstance:
             "targets": list(self.targets),
             "metadata": dict(self.metadata),
         }
-
-
-
