@@ -1,0 +1,37 @@
+name: stress-test
+description: Stress test with concurrent users and rapid requests
+
+target:
+  service: ollama-llm
+  protocol: http
+  timeout_seconds: 30
+
+workload:
+  pattern: open-loop
+  duration_seconds: 120
+  requests_per_second: 50
+  concurrent_users: 10
+
+dataset:
+  type: synthetic
+  params:
+    prompt_length: 100
+    num_prompts: 500
+    model_name: tinyllama
+
+orchestration:
+  mode: slurm
+  resources:
+    cpu_cores: 4
+    memory_gb: 8
+
+output:
+  metrics:
+    - latency
+    - throughput
+    - errors
+    - p50
+    - p95
+    - p99
+  format: json
+  destination: ./results/stress-test
