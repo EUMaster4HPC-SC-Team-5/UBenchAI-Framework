@@ -79,6 +79,17 @@ ubenchai client run --recipe test
 ubenchai monitor start --recipe metrics
 ```
 
+### Method 5: Web Dashboard (NEW!)
+```bash
+# Start the web dashboard
+poetry run ubenchai web start
+
+# Or with custom settings
+poetry run ubenchai web start --host 0.0.0.0 --port 8080 --debug
+
+# Access the dashboard at http://localhost:5000
+```
+
 ## Command Reference
 
 ### Server Module
@@ -218,7 +229,74 @@ comparisons:
     right: run2
 ```
 
-Outputs are saved to `reports_output/<job-id>/` as `report.html`, `report.json`.
+Outputs are saved to `reports_output/<job-id>/` as `report.html`, `report.json`, `report.pdf`.
+
+### Web Dashboard Module (NEW!)
+Launch a modern web interface for managing the framework:
+
+```bash
+# Start web dashboard
+ubenchai web start
+
+# With custom configuration
+ubenchai web start --host 0.0.0.0 --port 8080 --debug
+
+# Access at http://localhost:5000
+```
+
+**Features:**
+- **Dashboard Overview**: Real-time statistics and system health
+- **Server Management**: Start/stop services with web interface
+- **Monitor Management**: Launch and manage monitoring sessions
+- **Report Generation**: Generate and view reports
+- **System Health**: Real-time health monitoring and alerts
+- **API Endpoints**: RESTful API for integration
+
+### Health Monitoring Module (NEW!)
+Comprehensive system health monitoring and alerting:
+
+```bash
+# Check system health via API
+curl http://localhost:5000/api/health
+
+# Get health summary
+curl http://localhost:5000/api/health/summary
+```
+
+**Monitored Metrics:**
+- CPU usage and load average
+- Memory utilization
+- Disk space usage
+- Process count
+- Network I/O and errors
+- Overall system health status
+
+**Health Status Levels:**
+- 🟢 **Healthy**: All systems normal
+- 🟡 **Warning**: Elevated usage or minor issues
+- 🔴 **Critical**: High usage or system problems
+- ⚪ **Unknown**: Unable to determine status
+
+### Metrics Analysis Module (NEW!)
+Advanced metrics analysis and comparison tools:
+
+```bash
+# Analyze metrics from a file
+ubenchai analysis analyze logs/monitors/abc123/metrics.json
+
+# Compare two metrics files
+ubenchai analysis compare baseline.json comparison.json
+
+# Analyze trends across multiple files
+ubenchai analysis trends file1.json file2.json file3.json
+```
+
+**Analysis Features:**
+- **Statistical Analysis**: Mean, median, percentiles, standard deviation
+- **Performance Comparison**: Baseline vs comparison analysis
+- **Trend Detection**: Identify increasing, decreasing, or stable trends
+- **Significance Testing**: Determine if changes are significant
+- **Multi-file Analysis**: Analyze trends across multiple benchmark runs
 
 ## Logging
 
@@ -881,6 +959,11 @@ classDiagram
 - **PyYAML 6.0.3+**: Service recipe parsing and configuration management
 - **Loguru 0.7.3+**: Advanced logging with structured output and rotation
 - **Black 25.9.0+**: Code formatting
+- **Flask 3.0.0+**: Web dashboard and API framework
+- **Bootstrap 5**: Modern web UI components
+- **WeasyPrint**: PDF report generation
+- **Jinja2**: Template engine for reports
+- **psutil**: System monitoring and health checks
 - **Apptainer/Singularity:** Container runtime optimized for HPC environments
 - **Pyslurm**: Python bindings for SLURM API 
 - **kubernetes**: Official Kubernetes Python client (optional?)
@@ -944,6 +1027,78 @@ classDiagram
 - Use GitHub Issues for task-specific discussions
 - Update issue status regularly
 - Tag team members for reviews
+
+## Recent Updates (v0.1.0)
+
+### 🎉 New Features Added
+
+#### **Web Dashboard Interface**
+- **Modern Web UI**: Bootstrap 5-based responsive dashboard
+- **Real-time Monitoring**: Live statistics and system health
+- **Service Management**: Start/stop services through web interface
+- **Monitor Control**: Launch and manage monitoring sessions
+- **Report Generation**: Generate and view reports in browser
+- **API Integration**: RESTful API endpoints for automation
+
+#### **Enhanced Reporting System**
+- **Professional Templates**: Beautiful HTML reports with Bootstrap styling
+- **PDF Generation**: Automated PDF report creation with WeasyPrint
+- **Multiple Formats**: HTML, JSON, and PDF output support
+- **Rich Visualizations**: Charts and metrics display
+- **Template Engine**: Jinja2-based report templating
+
+#### **Health Monitoring System**
+- **Comprehensive Checks**: CPU, memory, disk, network, and process monitoring
+- **Real-time Alerts**: Warning and critical status notifications
+- **Health API**: RESTful endpoints for health data
+- **Historical Data**: Health check history and trends
+- **Configurable Thresholds**: Customizable alert levels
+
+#### **Improved CLI Experience**
+- **Web Dashboard Command**: `ubenchai web start` for instant web interface
+- **Enhanced Help**: Better command documentation and examples
+- **Error Handling**: Improved error messages and debugging
+- **Configuration Options**: Flexible host, port, and directory settings
+
+### 🚀 Getting Started with New Features
+
+1. **Start the Web Dashboard**:
+   ```bash
+   poetry run ubenchai web start
+   # Visit http://localhost:5000
+   ```
+
+2. **Generate Enhanced Reports**:
+   ```bash
+   poetry run ubenchai report start --recipe sample-report
+   # Check reports_output/ for HTML, JSON, and PDF files
+   ```
+
+3. **Monitor System Health**:
+   ```bash
+   curl http://localhost:5000/api/health
+   # Get real-time system health status
+   ```
+
+4. **Analyze Metrics**:
+   ```bash
+   poetry run ubenchai analysis analyze logs/monitors/abc123/metrics.json
+   # Get detailed statistical analysis of metrics
+   ```
+
+5. **Compare Performance**:
+   ```bash
+   poetry run ubenchai analysis compare baseline.json new_run.json
+   # Compare performance between two benchmark runs
+   ```
+
+### 📊 Dashboard Screenshots
+The web dashboard provides:
+- **Overview Page**: System statistics and health status
+- **Server Management**: Visual service lifecycle management
+- **Monitor Control**: Real-time monitoring session management
+- **Report Viewer**: Interactive report generation and viewing
+- **Health Dashboard**: System health monitoring and alerts
 
 ## Acknowledgments
 - EUMaster4HPC Program

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UBenchAI Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .stat-card {
+            transition: transform 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+        .status-badge {
+            font-size: 0.8em;
+        }
+        .activity-item {
+            border-left: 3px solid #007bff;
+            padding-left: 15px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-chart-line me-2"></i>UBenchAI Dashboard
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/servers">
+                    <i class="fas fa-server me-1"></i>Servers
+                </a>
+                <a class="nav-link" href="/monitors">
+                    <i class="fas fa-monitor me-1"></i>Monitors
+                </a>
+                <a class="nav-link" href="/reports">
+                    <i class="fas fa-chart-bar me-1"></i>Reports
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Page Header -->
+        <div class="row mb-4">
+            <div class="col">
+                <h1><i class="fas fa-tachometer-alt me-2"></i>Dashboard Overview</h1>
+                <p class="text-muted">Monitor and manage your AI Factory benchmarking infrastructure</p>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stat-card bg-primary text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="card-title">{{ stats.servers.running if stats.servers else 0 }}</h4>
+                                <p class="card-text">Running Services</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-server fa-2x"></i>
+                            </div>
+                        </div>
+                        <small>{{ stats.servers.available if stats.servers else 0 }} available recipes</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card bg-success text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="card-title">{{ stats.monitors.running if stats.monitors else 0 }}</h4>
+                                <p class="card-text">Active Monitors</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-monitor fa-2x"></i>
+                            </div>
+                        </div>
+                        <small>{{ stats.monitors.available if stats.monitors else 0 }} available recipes</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card bg-info text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="card-title">{{ stats.reports.jobs if stats.reports else 0 }}</h4>
+                                <p class="card-text">Report Jobs</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-chart-bar fa-2x"></i>
+                            </div>
+                        </div>
+                        <small>{{ stats.reports.available if stats.reports else 0 }} available templates</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card bg-{{ 'success' if health_summary.status == 'healthy' else 'warning' if health_summary.status == 'warning' else 'danger' }} text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="card-title">
+                                    <i class="fas fa-{{ 'check-circle' if health_summary.status == 'healthy' else 'exclamation-triangle' if health_summary.status == 'warning' else 'times-circle' }}"></i>
+                                </h4>
+                                <p class="card-text">System Health</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-heartbeat fa-2x"></i>
+                            </div>
+                        </div>
+                        <small>{{ health_summary.status.title() if health_summary.status else 'Unknown' }}</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-server me-2"></i>Recent Services</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if recent_services %}
+                            {% for service in recent_services %}
+                                <div class="activity-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>{{ service.recipe_name }}</strong>
+                                            <br>
+                                            <small class="text-muted">ID: {{ service.id[:8] }}...</small>
+                                        </div>
+                                        <span class="badge bg-{{ 'success' if service.status == 'running' else 'warning' }} status-badge">
+                                            {{ service.status }}
+                                        </span>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted">No running services</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-monitor me-2"></i>Recent Monitors</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if recent_monitors %}
+                            {% for monitor in recent_monitors %}
+                                <div class="activity-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>{{ monitor.recipe.name }}</strong>
+                                            <br>
+                                            <small class="text-muted">ID: {{ monitor.id[:8] }}...</small>
+                                        </div>
+                                        <span class="badge bg-{{ 'success' if monitor.status == 'running' else 'warning' }} status-badge">
+                                            {{ monitor.status }}
+                                        </span>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted">No active monitors</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-bolt me-2"></i>Quick Actions</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <a href="/servers" class="btn btn-primary w-100 mb-2">
+                                    <i class="fas fa-play me-2"></i>Start Service
+                                </a>
+                            </div>
+                            <div class="col-md-3">
+                                <a href="/monitors" class="btn btn-success w-100 mb-2">
+                                    <i class="fas fa-monitor me-2"></i>Start Monitor
+                                </a>
+                            </div>
+                            <div class="col-md-3">
+                                <a href="/reports" class="btn btn-info w-100 mb-2">
+                                    <i class="fas fa-chart-bar me-2"></i>Generate Report
+                                </a>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-secondary w-100 mb-2" onclick="refreshStats()">
+                                    <i class="fas fa-sync me-2"></i>Refresh
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function refreshStats() {
+            fetch('/api/stats')
+                .then(response => response.json())
+                .then(data => {
+                    // Update the statistics cards
+                    document.querySelector('.stat-card:nth-child(1) h4').textContent = data.servers.running;
+                    document.querySelector('.stat-card:nth-child(1) small').textContent = data.servers.available + ' available recipes';
+                    
+                    document.querySelector('.stat-card:nth-child(2) h4').textContent = data.monitors.running;
+                    document.querySelector('.stat-card:nth-child(2) small').textContent = data.monitors.available + ' available recipes';
+                    
+                    document.querySelector('.stat-card:nth-child(3) h4').textContent = data.reports.jobs;
+                    document.querySelector('.stat-card:nth-child(3) small').textContent = data.reports.available + ' available templates';
+                })
+                .catch(error => console.error('Error refreshing stats:', error));
+        }
+
+        // Auto-refresh stats every 30 seconds
+        setInterval(refreshStats, 30000);
+    </script>
+</body>
+</html>
