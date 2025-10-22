@@ -43,7 +43,13 @@ python-dotenv = "^1.1.1"
 requests = "^2.31.0"
 =======
 psutil = "^5.9.0"
+<<<<<<< HEAD
 >>>>>>> 44db573 (Add: Reporting Module first steps)
+=======
+flask = "^3.0.0"
+weasyprint = "^62.0"
+jinja2 = "^3.1.0"
+>>>>>>> 63336ae (Add: Web Dashboard Interface, Reporting System, Health Monitoring, Metric Analysis; Change: Dependencies and Documentation)
 
 [tool.poetry.group.dev]
 optional = true
