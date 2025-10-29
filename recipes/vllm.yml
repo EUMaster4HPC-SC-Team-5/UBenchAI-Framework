@@ -25,7 +25,7 @@ environment:
 
 volumes:
   # Project scratch directory for persistent model storage
-  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5-$USER/vllm
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team0/vllm
     container_path: /root/.cache/huggingface
     readonly: false
 
@@ -61,15 +61,15 @@ command:
     # Start vLLM server
     echo ""
     echo "Starting vLLM server..."
-    echo "Model: meta-llama/Llama-2-7b-chat-hf"
+    echo "Model: mistralai/Mistral-7B-Instruct-v0.2"
     echo "GPU Memory Utilization: 0.9"
     
     python3 -m vllm.entrypoints.openai.api_server \
-        --model meta-llama/Llama-2-7b-chat-hf \
+        --model mistralai/Mistral-7B-Instruct-v0.2 \
         --host 0.0.0.0 \
         --port 8000 \
         --gpu-memory-utilization 0.9 \
-        --max-model-len 4096 \
+        --max-model-len 8192 \
         --dtype auto \
         --trust-remote-code &
     
@@ -111,7 +111,7 @@ command:
     echo "  curl http://${COMPUTE_NODE}:8000/v1/completions \\"
     echo "    -H 'Content-Type: application/json' \\"
     echo "    -d '{"
-    echo "      \"model\": \"meta-llama/Llama-2-7b-chat-hf\","
+    echo "      \"model\": \"mistralai/Mistral-7B-Instruct-v0.2\","
     echo "      \"prompt\": \"What is artificial intelligence?\","
     echo "      \"max_tokens\": 100"
     echo "    }'"
