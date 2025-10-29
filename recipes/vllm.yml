@@ -1,0 +1,129 @@
+# vLLM LLM inference service for MeluXina
+# High-performance GPU-accelerated inference with vLLM
+
+name: vllm-llm
+description: vLLM LLM inference service with GPU acceleration
+image: docker://vllm/vllm-openai:latest
+
+resources:
+  cpu_cores: 8
+  memory_gb: 64
+  gpu_count: 1
+  disk_gb: 100
+  nodes: 1
+  ntasks: 1
+
+ports:
+  - container_port: 8000
+    host_port: 8000
+    protocol: tcp
+
+environment:
+  VLLM_HOST: "0.0.0.0"
+  VLLM_PORT: "8000"
+  HF_HOME: "/root/.cache/huggingface"
+
+volumes:
+  # Project scratch directory for persistent model storage
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5-$USER/vllm
+    container_path: /root/.cache/huggingface
+    readonly: false
+
+healthcheck:
+  endpoint: /health
+  interval_seconds: 15
+  timeout_seconds: 10
+  retries: 3
+  initial_delay: 60
+
+# Command executed INSIDE the Apptainer container
+command:
+  - /bin/bash
+  - -c
+  - |
+    set -e
+    
+    echo "========================================="
+    echo "vLLM Service Starting"
+    echo "========================================="
+    echo "Hostname: $(hostname)"
+    echo "Date: $(date)"
+    echo "========================================="
+    
+    # Check GPU availability
+    echo "Checking GPU availability..."
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        nvidia-smi
+    else
+        echo "Warning: nvidia-smi not found"
+    fi
+    
+    # Start vLLM server
+    echo ""
+    echo "Starting vLLM server..."
+    echo "Model: meta-llama/Llama-2-7b-chat-hf"
+    echo "GPU Memory Utilization: 0.9"
+    
+    python3 -m vllm.entrypoints.openai.api_server \
+        --model meta-llama/Llama-2-7b-chat-hf \
+        --host 0.0.0.0 \
+        --port 8000 \
+        --gpu-memory-utilization 0.9 \
+        --max-model-len 4096 \
+        --dtype auto \
+        --trust-remote-code &
+    
+    SERVER_PID=$!
+    echo "✓ Server PID: $SERVER_PID"
+    
+    # Cleanup function
+    cleanup() {
+        echo ""
+        echo "Shutting down vLLM server..."
+        kill $SERVER_PID 2>/dev/null || true
+        wait $SERVER_PID 2>/dev/null || true
+        echo "✓ Server stopped"
+    }
+    trap cleanup EXIT INT TERM
+    
+    # Wait for server initialization
+    echo "Waiting for server to initialize (60 seconds)..."
+    sleep 60
+    
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+        echo "✗ Server process died during startup"
+        exit 1
+    fi
+    
+    # Display connection information
+    COMPUTE_NODE=$(hostname)
+    echo ""
+    echo "========================================="
+    echo "vLLM Server Ready!"
+    echo "========================================="
+    echo "OpenAI-compatible API: http://${COMPUTE_NODE}:8000/v1"
+    echo ""
+    echo "Test from login node or other jobs:"
+    echo "  curl http://${COMPUTE_NODE}:8000/health"
+    echo "  curl http://${COMPUTE_NODE}:8000/v1/models"
+    echo ""
+    echo "Example inference request:"
+    echo "  curl http://${COMPUTE_NODE}:8000/v1/completions \\"
+    echo "    -H 'Content-Type: application/json' \\"
+    echo "    -d '{"
+    echo "      \"model\": \"meta-llama/Llama-2-7b-chat-hf\","
+    echo "      \"prompt\": \"What is artificial intelligence?\","
+    echo "      \"max_tokens\": 100"
+    echo "    }'"
+    echo ""
+    echo "Job will run until time limit or manual cancellation"
+    echo "========================================="
+    
+    # Keep container alive - wait for server process
+    wait $SERVER_PID
+    EXIT_CODE=$?
+    echo ""
+    echo "Server exited with code: $EXIT_CODE"
+    exit $EXIT_CODE
+
+working_dir: /workspace
