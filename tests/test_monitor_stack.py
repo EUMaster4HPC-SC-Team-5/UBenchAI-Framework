@@ -7,9 +7,12 @@ import tempfile
 from pathlib import Path
 import pytest
 import yaml
+import logging
 
 from ubenchai.monitors.manager import MonitorManager
 from ubenchai.monitors.models import MonitorStatus
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -100,10 +103,10 @@ def test_monitoring_stack_deployment(temp_workspace):
 def test_monitoring_stack_with_mock_binary(temp_workspace, monkeypatch):
     """Test monitoring stack with mocked binary detection."""
 
-    def mock_find_prometheus_binary(candidates):
+    def mock_find_prometheus_binary(self, candidates):
         return "/mock/prometheus/path"
 
-    def mock_find_grafana_binary(candidates):
+    def mock_find_grafana_binary(self, candidates):
         return "/mock/grafana/path"
 
     # Mock the binary detection methods
