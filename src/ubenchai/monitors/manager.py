@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 import os
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -58,7 +58,7 @@ class MonitorManager:
     ) -> MonitorInstance:
         recipe = self.recipe_loader.load_recipe(recipe_name)
         monitor_id = str(uuid.uuid4())
-        created_at_iso = datetime.utcnow().isoformat() + "Z"
+        created_at_iso = datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z")
         instance = MonitorInstance(
             id=monitor_id,
             recipe=recipe,
@@ -215,7 +215,7 @@ class MonitorManager:
         interval = max(1, int(instance.recipe.collection_interval_seconds))
         snapshot = {
             "monitor_id": instance.id,
-            "taken_at": datetime.utcnow().isoformat() + "Z",
+            "taken_at": datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z"),
             "cpu_percent": psutil.cpu_percent(interval=0.1),
             "memory": dict(psutil.virtual_memory()._asdict()),
             "disk": dict(psutil.disk_usage("/")._asdict()),
