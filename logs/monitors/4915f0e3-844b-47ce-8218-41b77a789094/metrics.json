@@ -1,0 +1,30 @@
+{
+  "monitor_id": "4915f0e3-844b-47ce-8218-41b77a789094",
+  "taken_at": "2025-10-28T12:51:39.760685Z",
+  "cpu_percent": 29.3,
+  "memory": {
+    "total": 33476653056,
+    "available": 16483205120,
+    "percent": 50.8,
+    "used": 16993447936,
+    "free": 16483205120
+  },
+  "disk": {
+    "total": 509003952128,
+    "used": 153558663168,
+    "free": 355445288960,
+    "percent": 30.2
+  },
+  "net_io": {
+    "bytes_sent": 12353531,
+    "bytes_recv": 156346081,
+    "packets_sent": 53265,
+    "packets_recv": 123525,
+    "errin": 0,
+    "errout": 2175,
+    "dropin": 0,
+    "dropout": 2176
+  },
+  "pids": 337,
+  "targets": []
+}

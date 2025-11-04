@@ -386,7 +386,7 @@ if ! command -v apptainer &> /dev/null; then
     exit 1
 fi
 
-echo "✓ Apptainer: $(apptainer --version)"
+echo "[OK] Apptainer: $(apptainer --version)"
 
 # Prepare volume mount directories on host
 echo "Preparing host directories..."
@@ -412,9 +412,9 @@ if [ ! -f "$IMAGE_FILE" ]; then
         echo "ERROR: Failed to pull container image"
         exit 1
     fi
-    echo "✓ Container image pulled: $IMAGE_FILE"
+    echo "[OK] Container image pulled: $IMAGE_FILE"
 else
-    echo "✓ Using cached container: $IMAGE_FILE"
+    echo "[OK] Using cached container: $IMAGE_FILE"
 fi
 
 # Create startup script that will run inside the container
@@ -470,8 +470,10 @@ exit $EXIT_CODE
         Raises:
             RuntimeError: If submission fails
         """
-        # Create temporary script file
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
+        # Create temporary script file with UTF-8 encoding
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".sh", delete=False, encoding="utf-8"
+        ) as f:
             f.write(script_content)
             script_path = f.name
 

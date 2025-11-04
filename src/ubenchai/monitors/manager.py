@@ -1,6 +1,6 @@
 """
 MonitorManager - central component to start/stop and manage monitoring runs.
-Implements local collection, file export, and stubs for Prometheus/Grafana/SLURM.
+Implements local collection, Prometheus/Grafana integration, and SLURM deployment.
 """
 
 from __future__ import annotations
@@ -23,14 +23,23 @@ except Exception:  # pragma: no cover
 
 from .models import MonitorInstance, MonitorRecipe, MonitorStatus
 from .recipe_loader import MonitorRecipeLoader
+from .prometheus_client import PrometheusClient
+from .grafana_client import GrafanaClient
 
 
 class MonitorManager:
     def __init__(self, recipe_directory: str = "recipes", output_root: str = "logs"):
-        self.recipe_loader = MonitorRecipeLoader(recipe_directory=recipe_directory)
+        self.recipe_directory = Path(recipe_directory)
         self.output_root = Path(output_root)
         self.output_root.mkdir(parents=True, exist_ok=True)
+
+        self.recipe_loader = MonitorRecipeLoader(recipe_directory)
         self._instances: Dict[str, MonitorInstance] = {}
+
+        # Initialize clients
+        self.prometheus = PrometheusClient(self.output_root)
+        self.grafana = GrafanaClient(self.output_root)
+
         logger.info("MonitorManager initialized")
         self._load_existing_instances()
 
@@ -62,25 +71,80 @@ class MonitorManager:
         logger.info(f"Monitor started: {monitor_id} ({recipe.name}) - mode={mode}")
         self._persist_instance(instance)
 
-        # Deploy Prometheus if requested via exporters
+        # Deploy monitoring stack
         try:
-            if any(
-                (e.get("type") or "").lower() == "prometheus"
-                for e in instance.recipe.exporters
-            ):
-                self.deploy_prometheus(instance)
-        except Exception as exc:
-            logger.warning(f"Prometheus deployment failed: {exc}")
+            if any(e.get("type") == "prometheus" for e in instance.recipe.exporters):
+                # Create Prometheus config from recipe
+                prometheus_config = self._build_prometheus_config(instance)
 
-        # Optional Grafana provisioning (binds Prometheus if available)
-        try:
-            if (instance.recipe.grafana or {}).get("enabled", False):
-                self.deploy_grafana(instance)
-        except Exception as exc:
-            logger.warning(f"Grafana provisioning failed: {exc}")
+                # Deploy Prometheus
+                instance.prometheus_url = self.prometheus.deploy_prometheus(
+                    instance_id=monitor_id, config=prometheus_config
+                )
 
-        if mode == "local":
-            # For now, run a synchronous local collection once and export to file
+                # Wait for Prometheus to be ready before deploying Grafana
+                if instance.prometheus_url and not self.prometheus.wait_for_ready(
+                    instance.prometheus_url
+                ):
+                    raise RuntimeError(
+                        f"Prometheus failed to become ready at {instance.prometheus_url}"
+                    )
+                elif not instance.prometheus_url:
+                    logger.warning(
+                        "Prometheus binary not available, skipping Prometheus deployment"
+                    )
+
+                # Deploy Grafana if enabled and Prometheus is available
+                if instance.recipe.grafana.get("enabled", False):
+                    if instance.prometheus_url:
+                        instance.grafana_url = self.grafana.deploy_grafana(
+                            instance_id=monitor_id,
+                            prometheus_url=instance.prometheus_url,
+                            config=instance.recipe.grafana,
+                        )
+
+                        # Test the connection between Grafana and Prometheus
+                        admin_user = instance.recipe.grafana.get("admin_user", "admin")
+                        admin_password = instance.recipe.grafana.get(
+                            "admin_password", "admin"
+                        )
+
+                        if not self.grafana._test_datasource_connection(
+                            instance.grafana_url, admin_user, admin_password
+                        ):
+                            logger.warning(
+                                "Grafana-Prometheus connection test failed, but continuing..."
+                            )
+
+                        # Create dashboards
+                        for dashboard in instance.recipe.grafana.get("dashboards", []):
+                            if dashboard["type"] == "system":
+                                self.grafana.create_system_dashboard(
+                                    instance_id=monitor_id, targets=instance.targets
+                                )
+                            elif dashboard["type"] == "llm":
+                                self.grafana.create_llm_dashboard(
+                                    instance_id=monitor_id
+                                )
+                    else:
+                        logger.warning(
+                            "Grafana is enabled but Prometheus is not available, skipping Grafana deployment"
+                        )
+
+                logger.info(
+                    f"Deployed monitoring stack for {monitor_id}:"
+                    f"\n  Prometheus: {instance.prometheus_url}"
+                    f"\n  Grafana: {instance.grafana_url or 'disabled'}"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to deploy monitoring stack: {e}")
+            instance.status = MonitorStatus.ERROR
+            self._persist_instance(instance)
+            raise
+
+        # Run local collection if needed
+        if mode == "local" and not instance.prometheus_url:
             try:
                 self._run_local_collection_once(instance)
                 instance.status = MonitorStatus.RUNNING
@@ -91,9 +155,16 @@ class MonitorManager:
             # Submit a real SLURM job (best-effort)
             self.submit_slurm_job(instance)
             instance.status = MonitorStatus.RUNNING
+        elif instance.prometheus_url:
+            # Prometheus is available and running
+            instance.status = MonitorStatus.RUNNING
         else:
-            instance.status = MonitorStatus.ERROR
-            logger.error(f"Unknown monitor mode: {mode}")
+            # No Prometheus and no local collection
+            logger.warning(f"Monitor {monitor_id} has no active collection method")
+            instance.status = (
+                MonitorStatus.RUNNING
+            )  # Still mark as running since config was written
+
         self._persist_instance(instance)
         return instance
 
@@ -164,166 +235,34 @@ class MonitorManager:
         time.sleep(interval)
         return output_path
 
-    # ----- Prometheus deployment -----
-    def deploy_prometheus(self, instance: MonitorInstance) -> None:
-        out_dir = self.output_root / "monitors" / instance.id
-        prom_dir = out_dir / "prometheus"
-        prom_dir.mkdir(parents=True, exist_ok=True)
+    def _build_prometheus_config(self, instance: MonitorInstance) -> Dict:
+        """Build Prometheus configuration from recipe."""
+        # Get prometheus config from recipe
+        prom_config = next(
+            (e for e in instance.recipe.exporters if e.get("type") == "prometheus"), {}
+        )
 
-        # Build scrape targets (host:port pairs)
-        targets = []
-        for t in instance.targets:
-            # Accept raw host or host:port; default to 9090/9100 based on hint
-            if ":" in t:
-                targets.append(t)
-            else:
-                targets.append(f"{t}:9100")  # default to node_exporter
-
+        # Build base config
         config = {
             "global": {
-                "scrape_interval": f"{max(1, int(instance.recipe.collection_interval_seconds))}s"
+                "scrape_interval": f"{instance.recipe.collection_interval_seconds}s",
+                "evaluation_interval": "15s",
             },
-            "scrape_configs": [
-                {
-                    "job_name": instance.recipe.name,
-                    "static_configs": [{"targets": targets}] if targets else [],
-                }
-            ],
+            "scrape_configs": prom_config.get("scrape_configs", []),
         }
 
-        config_path = prom_dir / "prometheus.yml"
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(config, f, sort_keys=False)
-
-        # Try to start a local Prometheus if available
-        prometheus_bin = self._which(["prometheus"])
-        if prometheus_bin:
-            data_dir = prom_dir / "data"
-            data_dir.mkdir(exist_ok=True)
-            log_path = prom_dir / "prometheus.log"
-            try:
-                import subprocess
-
-                cmd = [
-                    prometheus_bin,
-                    f"--config.file={config_path}",
-                    f"--storage.tsdb.path={data_dir}",
-                    "--web.listen-address=0.0.0.0:9090",
-                ]
-                subprocess.Popen(
-                    cmd,
-                    stdout=open(log_path, "a"),
-                    stderr=subprocess.STDOUT,
-                )
-                instance.prometheus_url = "http://localhost:9090"
-                logger.info("Started local Prometheus on http://localhost:9090")
-            except Exception as exc:
-                logger.warning(f"Failed to start Prometheus automatically: {exc}")
-        else:
-            logger.info("Prometheus binary not found on PATH; wrote config only")
-            # Provide a conventional URL for external Prometheus
-            instance.prometheus_url = instance.prometheus_url or "http://localhost:9090"
-
-        self._persist_instance(instance)
-
-    # ----- Grafana provisioning -----
-    def deploy_grafana(self, instance: MonitorInstance) -> None:
-        out_dir = self.output_root / "monitors" / instance.id / "grafana"
-        prov_dir = out_dir / "provisioning"
-        ds_dir = prov_dir / "datasources"
-        db_dir = prov_dir / "dashboards"
-        dashboards_dir = out_dir / "dashboards"
-        ds_dir.mkdir(parents=True, exist_ok=True)
-        db_dir.mkdir(parents=True, exist_ok=True)
-        dashboards_dir.mkdir(parents=True, exist_ok=True)
-
-        # Data source binding to Prometheus
-        prometheus_url = instance.prometheus_url or "http://localhost:9090"
-        datasource_yaml = {
-            "apiVersion": 1,
-            "datasources": [
+        # Add default node_exporter job if none specified
+        if not any(j.get("job_name") == "node" for j in config["scrape_configs"]):
+            config["scrape_configs"].append(
                 {
-                    "name": "UBenchAI Prometheus",
-                    "type": "prometheus",
-                    "access": "proxy",
-                    "url": prometheus_url,
-                    "isDefault": True,
-                }
-            ],
-        }
-        with open(ds_dir / "datasource.yml", "w", encoding="utf-8") as f:
-            yaml.safe_dump(datasource_yaml, f, sort_keys=False)
-
-        # Generate a simple dashboard
-        dashboard_path = dashboards_dir / "ubenchai-overview.json"
-        dashboard = {
-            "annotations": {"list": []},
-            "panels": [
-                {
-                    "type": "timeseries",
-                    "title": "Node CPU Utilization",
-                    "targets": [
-                        {
-                            "expr": '100 - (avg by(instance)(irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
-                        }
+                    "job_name": "node",
+                    "static_configs": [
+                        {"targets": [f"{t}:9100" for t in instance.targets]}
                     ],
-                    "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
-                },
-            ],
-            "title": f"UBenchAI - {instance.recipe.name}",
-            "schemaVersion": 38,
-            "version": 1,
-        }
-        with open(dashboard_path, "w", encoding="utf-8") as f:
-            json.dump(dashboard, f, indent=2)
-
-        dashboards_prov = {
-            "apiVersion": 1,
-            "providers": [
-                {
-                    "name": "ubenchai-dashboards",
-                    "orgId": 1,
-                    "folder": "UBenchAI",
-                    "type": "file",
-                    "disableDeletion": False,
-                    "options": {"path": str(dashboards_dir)},
                 }
-            ],
-        }
-        with open(db_dir / "dashboards.yml", "w", encoding="utf-8") as f:
-            yaml.safe_dump(dashboards_prov, f, sort_keys=False)
+            )
 
-        # Try to start Grafana if available
-        grafana_bin = self._which(
-            ["grafana-server", "grafana-server.exe"]
-        )  # Windows-friendly
-        if grafana_bin:
-            try:
-                import subprocess
-
-                log_path = out_dir / "grafana.log"
-                http_port = (instance.recipe.grafana or {}).get("port", 3000)
-                env = {
-                    **os.environ,
-                    "GF_PATHS_PROVISIONING": str(prov_dir),
-                    "GF_SERVER_HTTP_PORT": str(http_port),
-                }
-                subprocess.Popen(
-                    [grafana_bin, f"--homepath={out_dir}"],
-                    env=env,
-                    stdout=open(log_path, "a"),
-                    stderr=subprocess.STDOUT,
-                )
-                instance.grafana_url = f"http://localhost:{http_port}"
-                logger.info(f"Started local Grafana on {instance.grafana_url}")
-            except Exception as exc:
-                logger.warning(f"Failed to start Grafana automatically: {exc}")
-                instance.grafana_url = instance.grafana_url or "http://localhost:3000"
-        else:
-            logger.info("grafana-server not found; wrote provisioning files only")
-            instance.grafana_url = instance.grafana_url or "http://localhost:3000"
-
-        self._persist_instance(instance)
+        return config
 
     # ----- SLURM job submission (monitor context) -----
     def submit_slurm_job(self, instance: MonitorInstance) -> None:
@@ -410,23 +349,6 @@ class MonitorManager:
             if path:
                 return path
         return None
-        out_dir = self.output_root / "monitors" / instance.id
-        out_dir.mkdir(parents=True, exist_ok=True)
-        dashboard = {
-            "title": f"UBenchAI - {instance.recipe.name}",
-            "panels": [
-                {"type": "graph", "title": "CPU % (local)", "targets": []},
-                {"type": "graph", "title": "Memory (local)", "targets": []},
-            ],
-            "timezone": "browser",
-        }
-        path = out_dir / "grafana-dashboard.json"
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(dashboard, f, indent=2)
-        # Placeholder URL users can import the dashboard into local Grafana
-        instance.grafana_url = "http://localhost:3000"
-        logger.info(f"Wrote Grafana dashboard stub: {path}")
-        return path
 
     # ----- Persistence helpers -----
     def _instance_dir(self, instance_id: str) -> Path:

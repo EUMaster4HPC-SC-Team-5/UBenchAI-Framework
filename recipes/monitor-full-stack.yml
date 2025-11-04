@@ -1,0 +1,107 @@
+name: monitor-full-stack
+description: Full-stack monitoring with Prometheus and Grafana
+
+# Services to monitor
+target_services:
+  - ollama-llm
+  - qdrant-vectordb
+
+# Collection settings
+collection_interval_seconds: 15
+retention_period_hours: 72
+
+# Prometheus configuration
+exporters:
+  - type: prometheus
+    port: 9090
+    scrape_configs:
+      # Node exporter for system metrics
+      - job_name: node
+        static_configs:
+          - targets:
+              - "${SERVER_HOSTS}:9100"  # System metrics
+              - "${CLIENT_HOSTS}:9100"  # System metrics
+        
+      # LLM service metrics
+      - job_name: ollama
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - "${OLLAMA_HOST}:11434"  # Ollama metrics
+        
+      # Vector DB metrics
+      - job_name: qdrant
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - "${QDRANT_HOST}:6333"  # Qdrant metrics
+        
+      # Client workload metrics
+      - job_name: clients
+        static_configs:
+          - targets:
+              - "${CLIENT_HOSTS}:9091"  # Client metrics
+
+      # GPU metrics via DCGM exporter
+      - job_name: gpu
+        static_configs:
+          - targets:
+              - "${SERVER_HOSTS}:9400"  # DCGM exporter
+
+# Grafana configuration
+grafana:
+  enabled: true
+  port: 3000
+  admin_user: admin
+  admin_password: ubenchai
+  
+  # Pre-built dashboards
+  dashboards:
+    - title: "System Overview"
+      type: system
+      refresh: 5s
+      
+    - title: "LLM Performance"
+      type: llm
+      refresh: 5s
+      panels:
+        - name: "Request Rate"
+          type: graph
+          metrics:
+            - "rate(requests_total[5m])"
+        
+        - name: "Latency Distribution"
+          type: graph
+          metrics:
+            - "histogram_quantile(0.50, sum(rate(request_latency_bucket[5m])) by (le))"
+            - "histogram_quantile(0.95, sum(rate(request_latency_bucket[5m])) by (le))"
+            - "histogram_quantile(0.99, sum(rate(request_latency_bucket[5m])) by (le))"
+        
+        - name: "GPU Utilization"
+          type: graph
+          metrics:
+            - "nvidia_gpu_duty_cycle"
+        
+        - name: "Memory Usage"
+          type: graph
+          metrics:
+            - "rate(nvidia_gpu_memory_used_bytes[5m]) / rate(nvidia_gpu_memory_total_bytes[5m]) * 100"
+    
+    - title: "Vector DB Performance"
+      type: vectordb
+      refresh: 5s
+      panels:
+        - name: "Query Rate"
+          type: graph
+          metrics:
+            - "rate(qdrant_requests_total[5m])"
+        
+        - name: "Query Latency"
+          type: graph
+          metrics:
+            - "histogram_quantile(0.95, sum(rate(qdrant_query_duration_seconds_bucket[5m])) by (le))"
+        
+        - name: "Index Size"
+          type: graph
+          metrics:
+            - "qdrant_index_size_bytes"

@@ -53,11 +53,11 @@ class ClientRun:
 
     def __post_init__(self):
         """Post-initialization validation"""
+        # Validate required fields after dataclass initialization
+        if not self.recipe_name:
+            raise ValueError("Recipe name is required")
 
-    if not self.recipe_name:
-        raise ValueError("Recipe name is required")
-
-    logger.debug(f"Created ClientRun: {self.id} for {self.recipe_name}")
+        logger.debug(f"Created ClientRun: {self.id} for {self.recipe_name}")
 
     def update_status(self, new_status: RunStatus) -> None:
         """Update run status"""

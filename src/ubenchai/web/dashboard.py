@@ -15,6 +15,7 @@ from ..servers.orchestrator import OrchestratorType
 from ..monitors.manager import MonitorManager
 from ..reports.manager import ReportManager
 from ..health.checker import HealthChecker
+from ..clients.manager import ClientManager
 
 
 class WebDashboard:
@@ -53,6 +54,7 @@ class WebDashboard:
             recipe_directory=recipe_directory, output_root="reports_output"
         )
         self.health_checker = HealthChecker(output_dir=f"{output_root}/health")
+        self.client_manager = ClientManager(recipe_directory=recipe_directory)
 
         # Create Flask app
         self.app = self._create_app()
@@ -61,8 +63,9 @@ class WebDashboard:
 
     def _create_app(self) -> Flask:
         """Create and configure Flask application"""
-        # Get the project root directory (2 levels up from this file)
-        project_root = Path(__file__).resolve().parent.parent.parent
+        # Get the project root directory (4 levels up from this file)
+        # dashboard.py -> web/ -> ubenchai/ -> src/ -> project_root/
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
         templates_dir = project_root / "templates"
 
         logger.info(f"Looking for templates in: {templates_dir}")
@@ -363,6 +366,76 @@ class WebDashboard:
                     "version": "0.1.0",
                 }
             )
+
+        @app.route("/clients")
+        def clients():
+            """Client management page"""
+            try:
+                available = self.client_manager.list_available_clients()
+                running = self.client_manager.list_running_clients()
+
+                return render_template(
+                    "clients.html",
+                    available_clients=available,
+                    running_clients=running,
+                )
+            except Exception as e:
+                logger.error(f"Error loading clients: {e}")
+                flash(f"Error loading clients: {e}", "error")
+                return render_template(
+                    "clients.html", available_clients=[], running_clients=[]
+                )
+
+        @app.route("/clients/start", methods=["POST"])
+        def start_client():
+            """Start a client benchmark"""
+            try:
+                recipe_name = request.form.get("recipe_name")
+                if not recipe_name:
+                    flash("Recipe name is required", "error")
+                    return redirect(url_for("clients"))
+
+                run = self.client_manager.start_client(recipe_name)
+                flash(f"Client started: {run.id}", "success")
+                logger.info(f"Client started via web interface: {recipe_name}")
+            except Exception as e:
+                logger.error(f"Error starting client: {e}")
+                flash(f"Error starting client: {e}", "error")
+
+            return redirect(url_for("clients"))
+
+        @app.route("/clients/stop/<run_id>", methods=["POST"])
+        def stop_client(run_id):
+            """Stop a running client"""
+            try:
+                success = self.client_manager.stop_client(run_id)
+                if success:
+                    flash(f"Client stopped: {run_id}", "success")
+                else:
+                    flash(f"Failed to stop client: {run_id}", "error")
+            except Exception as e:
+                logger.error(f"Error stopping client: {e}")
+                flash(f"Error stopping client: {e}", "error")
+
+            return redirect(url_for("clients"))
+
+        @app.route("/clients/status/<run_id>")
+        def client_status(run_id):
+            try:
+                status = self.client_manager.get_client_status(run_id)
+                return jsonify(status)
+            except Exception as e:
+                logger.error(f"Error getting client status: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @app.route("/clients/logs/<run_id>")
+        def client_logs(run_id):
+            try:
+                logs = self.client_manager.get_client_logs(run_id)
+                return jsonify({"logs": logs})
+            except Exception as e:
+                logger.error(f"Error getting client logs: {e}")
+                return jsonify({"error": str(e)}), 500
 
         @app.route("/api/stats")
         def api_stats():

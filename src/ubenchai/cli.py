@@ -237,18 +237,26 @@ def handle_monitor_commands(args):
         if args.targets:
             targets = [t.strip() for t in args.targets.split(",") if t.strip()]
         inst = manager.start_monitor(args.recipe, targets=targets, mode=args.mode)
-        print("\n Monitor started:")
+        print("\nMonitor started:")
         print(f"   Monitor ID: {inst.id}")
         print(f"   Recipe: {inst.recipe.name}")
         print(f"   Status: {inst.status}")
-        if inst.grafana_url:
-            print(f"   Grafana: {inst.grafana_url}")
         if inst.prometheus_url:
-            print(f"   Prometheus: {inst.prometheus_url}")
+            print(f"\nPrometheus:")
+            print(f"   URL: {inst.prometheus_url}")
+            print(f"   Metrics: {inst.prometheus_url}/metrics")
+            print(f"   Graph: {inst.prometheus_url}/graph")
+            print(f"   Targets: {inst.prometheus_url}/targets")
+        if inst.grafana_url:
+            print(f"\nGrafana:")
+            print(f"   URL: {inst.grafana_url}")
+            print("   Login with:")
+            print("     Username: admin")
+            print("     Password: admin")
     elif args.action == "stop":
         ok = manager.stop_monitor(args.monitor_id)
         if ok:
-            print(f"\n Monitor stopped: {args.monitor_id}")
+            print(f"\nMonitor stopped: {args.monitor_id}")
         else:
             print(f"\n Monitor not found: {args.monitor_id}")
     elif args.action == "list":
