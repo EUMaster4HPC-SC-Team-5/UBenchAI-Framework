@@ -109,6 +109,13 @@ def test_monitoring_stack_with_mock_binary(temp_workspace, monkeypatch):
     def mock_find_grafana_binary(self, candidates):
         return "/mock/grafana/path"
 
+    def mock_popen(*args, **kwargs):
+        # Create a mock process object
+        import unittest.mock
+        mock_process = unittest.mock.Mock()
+        mock_process.pid = 12345
+        return mock_process
+
     # Mock the binary detection methods
     monkeypatch.setattr(
         "ubenchai.monitors.prometheus_client.PrometheusClient._which",
@@ -118,6 +125,8 @@ def test_monitoring_stack_with_mock_binary(temp_workspace, monkeypatch):
         "ubenchai.monitors.grafana_client.GrafanaClient._which",
         mock_find_grafana_binary,
     )
+    # Mock subprocess.Popen to prevent trying to execute fake binaries
+    monkeypatch.setattr("subprocess.Popen", mock_popen)
 
     manager = MonitorManager(
         recipe_directory=str(temp_workspace / "recipes"),
