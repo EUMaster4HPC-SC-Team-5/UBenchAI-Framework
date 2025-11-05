@@ -9,10 +9,10 @@ image: docker://vllm/vllm-openai:v0.6.3.post1
 resources:
   cpu_cores: 8
   memory_gb: 128
-  gpu_count: 4  # 4 GPUs total (can span multiple nodes)
+  gpu_count: 1  
   disk_gb: 200
-  nodes: 2  # Use 2 nodes with 2 GPUs each
-  ntasks: 2  # 1 task per node
+  nodes: 1  
+  ntasks: 1  # 1 task per node
   ntasks_per_node: 1
 
 ports:
