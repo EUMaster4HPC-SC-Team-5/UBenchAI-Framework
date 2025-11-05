@@ -26,7 +26,7 @@ environment:
 
 volumes:
   # Project scratch directory for persistent model storage
-  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team0/ollama # put a team0 folder you have the permission right to write in
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/$USER/ollama # put a team0 folder you have the permission right to write in
     container_path: /root/.ollama
     readonly: false
 
