@@ -396,6 +396,28 @@ echo "Preparing host directories..."
 echo "Setting environment variables..."
 {env_section}
 
+# For multi-node jobs, determine master node and node rank on HOST side
+if [ {recipe.resources.nodes} -gt 1 ]; then
+    echo "Multi-node job detected ({recipe.resources.nodes} nodes)"
+    
+    # Get master node (first node in allocation)
+    MASTER_NODE=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
+    echo "Master node: $MASTER_NODE"
+    
+    # Determine node rank
+    NODE_RANK=$(scontrol show hostnames $SLURM_JOB_NODELIST | grep -n "^$(hostname)$" | cut -d: -f1)
+    NODE_RANK=$((NODE_RANK - 1))  # Convert to 0-based index
+    echo "This node rank: $NODE_RANK (hostname: $(hostname))"
+    
+    # Export for container
+    export APPTAINERENV_MASTER_NODE="$MASTER_NODE"
+    export APPTAINERENV_NODE_RANK="$NODE_RANK"
+else
+    echo "Single-node job"
+    export APPTAINERENV_MASTER_NODE="$(hostname)"
+    export APPTAINERENV_NODE_RANK="0"
+fi
+
 # Set up container image cache directory
 IMAGE_CACHE_DIR="{self.image_cache_dir}"
 mkdir -p "$IMAGE_CACHE_DIR"
