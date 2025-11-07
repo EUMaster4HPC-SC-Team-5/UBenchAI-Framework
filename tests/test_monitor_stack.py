@@ -112,6 +112,7 @@ def test_monitoring_stack_with_mock_binary(temp_workspace, monkeypatch):
     def mock_popen(*args, **kwargs):
         # Create a mock process object
         import unittest.mock
+
         mock_process = unittest.mock.Mock()
         mock_process.pid = 12345
         return mock_process

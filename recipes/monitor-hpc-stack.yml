@@ -1,0 +1,203 @@
+name: monitor-hpc-stack
+description: HPC monitoring stack with Prometheus and Grafana for SLURM environments
+
+# Services to monitor
+target_services:
+  - ollama-llm
+  - qdrant-vectordb
+  - node-exporter
+  - cadvisor
+  - dcgm-gpu
+
+# Collection settings
+collection_interval_seconds: 15
+retention_period_hours: 720  # 30 days
+
+# Prometheus configuration
+exporters:
+  - type: prometheus
+    port: 9090
+    scrape_configs:
+      # Prometheus self-monitoring
+      - job_name: prometheus
+        static_configs:
+          - targets:
+              - localhost:9090
+        
+      # Node Exporter for system hardware metrics
+      - job_name: node_exporter
+        file_sd_configs:
+          - files:
+              - /prometheus/prometheus_assets/node_targets_*.json
+            refresh_interval: 10s
+        scrape_interval: 15s
+        
+      # cAdvisor for container metrics
+      - job_name: cadvisor
+        file_sd_configs:
+          - files:
+              - /prometheus/prometheus_assets/cadvisor_targets_*.json
+            refresh_interval: 10s
+        scrape_interval: 15s
+        
+      # DCGM GPU Exporter for GPU metrics
+      - job_name: dcgm_gpu
+        file_sd_configs:
+          - files:
+              - /prometheus/prometheus_assets/gpu_targets_*.json
+            refresh_interval: 10s
+        scrape_interval: 15s
+        
+      # Ollama LLM service metrics
+      - job_name: ollama
+        metrics_path: /metrics
+        file_sd_configs:
+          - files:
+              - /prometheus/prometheus_assets/ollama_targets_*.json
+            refresh_interval: 10s
+        scrape_interval: 15s
+        
+      # Qdrant Vector DB metrics
+      - job_name: qdrant
+        metrics_path: /metrics
+        file_sd_configs:
+          - files:
+              - /prometheus/prometheus_assets/qdrant_targets_*.json
+            refresh_interval: 10s
+        scrape_interval: 15s
+        
+      # Pushgateway for pushed metrics
+      - job_name: pushgateway
+        static_configs:
+          - targets:
+              - localhost:9091
+        scrape_interval: 10s
+
+# Grafana configuration
+grafana:
+  enabled: true
+  port: 3000
+  admin_user: admin
+  admin_password: ubenchai
+  
+  # Pre-built dashboards
+  dashboards:
+    - title: "System Overview"
+      type: system
+      refresh: 5s
+      description: "CPU, Memory, Disk, and Network metrics from Node Exporter"
+      
+    - title: "LLM Performance"
+      type: llm
+      refresh: 5s
+      description: "Ollama LLM inference metrics and GPU utilization"
+      panels:
+        - name: "Request Rate"
+          type: graph
+          metrics:
+            - rate(ollama_requests_total[5m])
+        
+        - name: "Inference Latency"
+          type: graph
+          metrics:
+            - histogram_quantile(0.50, sum(rate(ollama_inference_duration_seconds_bucket[5m])) by (le))
+            - histogram_quantile(0.95, sum(rate(ollama_inference_duration_seconds_bucket[5m])) by (le))
+            - histogram_quantile(0.99, sum(rate(ollama_inference_duration_seconds_bucket[5m])) by (le))
+        
+        - name: "GPU Utilization"
+          type: graph
+          metrics:
+            - DCGM_FI_DEV_GPU_UTIL
+        
+        - name: "GPU Memory Usage"
+          type: graph
+          metrics:
+            - DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_FREE * 100
+        
+        - name: "GPU Temperature"
+          type: graph
+          metrics:
+            - DCGM_FI_DEV_GPU_TEMP
+    
+    - title: "Vector DB Performance"
+      type: vectordb
+      refresh: 5s
+      description: "Qdrant vector database metrics"
+      panels:
+        - name: "Query Rate"
+          type: graph
+          metrics:
+            - rate(qdrant_requests_total[5m])
+        
+        - name: "Query Latency"
+          type: graph
+          metrics:
+            - histogram_quantile(0.95, sum(rate(qdrant_query_duration_seconds_bucket[5m])) by (le))
+        
+        - name: "Index Size"
+          type: graph
+          metrics:
+            - qdrant_collections_vector_count
+        
+        - name: "Memory Usage"
+          type: graph
+          metrics:
+            - qdrant_collections_memory_bytes
+    
+    - title: "Container Metrics"
+      type: container
+      refresh: 5s
+      description: "Docker/Apptainer container metrics from cAdvisor"
+      panels:
+        - name: "Container CPU Usage"
+          type: graph
+          metrics:
+            - rate(container_cpu_usage_seconds_total[5m])
+        
+        - name: "Container Memory Usage"
+          type: graph
+          metrics:
+            - container_memory_usage_bytes
+        
+        - name: "Container Network I/O"
+          type: graph
+          metrics:
+            - rate(container_network_receive_bytes_total[5m])
+            - rate(container_network_transmit_bytes_total[5m])
+        
+        - name: "Container Disk I/O"
+          type: graph
+          metrics:
+            - rate(container_fs_reads_bytes_total[5m])
+            - rate(container_fs_writes_bytes_total[5m])
+    
+    - title: "GPU Cluster Overview"
+      type: gpu_cluster
+      refresh: 5s
+      description: "Multi-GPU cluster metrics from DCGM"
+      panels:
+        - name: "GPU Utilization by Node"
+          type: graph
+          metrics:
+            - DCGM_FI_DEV_GPU_UTIL
+        
+        - name: "GPU Memory by Node"
+          type: graph
+          metrics:
+            - DCGM_FI_DEV_FB_USED
+        
+        - name: "GPU Power Usage"
+          type: graph
+          metrics:
+            - DCGM_FI_DEV_POWER_USAGE
+        
+        - name: "GPU Temperature by Node"
+          type: graph
+          metrics:
+            - DCGM_FI_DEV_GPU_TEMP
+        
+        - name: "PCIe Throughput"
+          type: graph
+          metrics:
+            - DCGM_FI_PROF_PCIE_TX_BYTES
+            - DCGM_FI_PROF_PCIE_RX_BYTES
