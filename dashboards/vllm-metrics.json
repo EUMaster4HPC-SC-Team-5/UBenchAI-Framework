@@ -1,0 +1,38 @@
+{
+  "title": "vLLM Metrics",
+  "uid": "vllm-metrics",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "rate(vllm:request_success_total[5m])"}]
+    },
+    {
+      "id": 2,
+      "title": "GPU Cache Usage",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "vllm:gpu_cache_usage_perc"}]
+    },
+    {
+      "id": 3,
+      "title": "Request Latency",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, rate(vllm:e2e_request_latency_seconds_bucket[5m]))", "legendFormat": "p50"},
+        {"expr": "histogram_quantile(0.95, rate(vllm:e2e_request_latency_seconds_bucket[5m]))", "legendFormat": "p95"}
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Running Requests",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{"expr": "vllm:num_requests_running"}]
+    }
+  ],
+  "refresh": "10s"
+}
