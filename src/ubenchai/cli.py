@@ -291,8 +291,8 @@ def main():
     parser = create_parser()
     args = parser.parse_args()
 
-    setup_logging(verbose=args.verbose)
-    print_banner()
+    # setup_logging(verbose=args.verbose)
+    # print_banner()
 
     logger.info("UBenchAI Framework starting...")
 
