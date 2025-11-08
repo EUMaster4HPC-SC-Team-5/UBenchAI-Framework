@@ -139,8 +139,6 @@ def handle_client_commands(args):
 def handle_monitor_commands(args):
     """Handle monitor subcommands"""
     logger.info(f"Monitor Module - Action: {args.action}")
-    def handle_monitor_commands(args):
-    """Handle monitor subcommands"""
     from ubenchai.monitors.manager import MonitorManager
 
     manager = MonitorManager(
@@ -152,7 +150,7 @@ def handle_monitor_commands(args):
     try:
         if args.action == "start":
             logger.info(f"Starting monitoring stack from recipe: {args.recipe}")
-            
+
             target_job_ids = None
             if args.targets:
                 target_job_ids = [t.strip() for t in args.targets.split(",")]
@@ -180,13 +178,21 @@ def handle_monitor_commands(args):
             for recipe in manager.list_available_monitors():
                 info = manager.get_recipe_info(recipe)
                 print(f"   • {recipe}: {info.get('description', '')}")
-            
+
             print("\n🔍 Running Monitors:")
             monitors = manager.list_running_monitors()
             if monitors:
                 from tabulate import tabulate
-                table = [[m["id"][:8], m["recipe_name"], m["status"], 
-                         m.get("prometheus_url", "N/A")[:30]] for m in monitors]
+
+                table = [
+                    [
+                        m["id"][:8],
+                        m["recipe_name"],
+                        m["status"],
+                        m.get("prometheus_url", "N/A")[:30],
+                    ]
+                    for m in monitors
+                ]
                 print(tabulate(table, headers=["ID", "Recipe", "Status", "Prometheus"]))
             else:
                 print("   None running")
@@ -360,7 +366,7 @@ def main():
     parser = create_parser()
     args = parser.parse_args()
 
-    # setup_logging(verbose=args.verbose)
+    setup_logging(verbose=args.verbose)
     # print_banner()
 
     logger.info("UBenchAI Framework starting...")

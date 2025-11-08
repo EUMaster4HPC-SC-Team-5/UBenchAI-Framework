@@ -1,0 +1,195 @@
+name: vllm-ray-multinode
+description: vLLM with Ray cluster for true multi-node tensor parallelism
+image: 'docker://vllm/vllm-openai:v0.6.3.post1'
+resources:
+  cpu_cores: 8
+  memory_gb: 128
+  gpu_count: 4
+  disk_gb: 200
+  nodes: 2
+  ntasks: 2
+  ntasks_per_node: 1
+ports:
+  - container_port: 8000
+    host_port: 8000
+    protocol: tcp
+  - container_port: 6379
+    host_port: 6379
+    protocol: tcp
+  - container_port: 8265
+    host_port: 8265
+    protocol: tcp
+environment:
+  VLLM_HOST: 0.0.0.0
+  VLLM_PORT: '8000'
+  HF_HOME: /root/.cache/huggingface
+  RAY_HEAD_PORT: '6379'
+  RAY_DASHBOARD_PORT: '8265'
+  NCCL_DEBUG: INFO
+  NCCL_IB_DISABLE: '0'
+  NCCL_SOCKET_IFNAME: mlx5
+command: >
+  set -e
+
+
+  # Get the head node's hostname and IP
+
+  export RAY_HEAD_HOSTNAME=$(scontrol show hostnames "$SLURM_JOB_NODELIST" |
+  head -n 1)
+
+  export RAY_HEAD_ADDRESS=$(getent hosts $RAY_HEAD_HOSTNAME | awk '{ print $1
+  }')
+
+
+  echo "========================================="
+
+  echo "vLLM Multi-Node with Ray - Starting"
+
+  echo "========================================="
+
+  echo "Job ID: $SLURM_JOB_ID"
+
+  echo "Total Nodes: $SLURM_NNODES"
+
+  echo "Master Node: $RAY_HEAD_HOSTNAME (IP: $RAY_HEAD_ADDRESS)"
+
+  echo "This node rank: $SLURM_PROCID (hostname: $HOSTNAME)"
+
+  echo "GPU Count (per node): $GPU_COUNT"
+
+  echo "========================================="
+
+  echo ""
+
+
+  #
+  ----------------------------------------------------------------------------------
+
+  # HEAD NODE LOGIC (SLURM_PROCID is 0)
+
+  #
+  ----------------------------------------------------------------------------------
+
+  if [ "$SLURM_PROCID" -eq 0 ]; then
+      echo "Starting Ray head node..."
+
+      # Start Ray head
+      ray start \
+          --head \
+          --host="0.0.0.0" \
+          --port="$RAY_HEAD_PORT" \
+          --dashboard-host="0.0.0.0" \
+          --dashboard-port="$RAY_DASHBOARD_PORT" \
+          --num-gpus=$GPU_COUNT \
+          --block &
+
+      RAY_HEAD_PID=$!
+      echo "✓ Ray head PID: $RAY_HEAD_PID"
+
+      # Wait for Ray head to be ready
+      echo "Waiting for Ray head to be available (45 seconds)..."
+      sleep 45
+
+      # Check if Ray is running (optional, but good for debugging)
+      if ray status --address="$RAY_HEAD_ADDRESS:$RAY_HEAD_PORT" 2>/dev/null; then
+          echo "✓ Ray head is running and ready for workers."
+          ray status --address="$RAY_HEAD_ADDRESS:$RAY_HEAD_PORT"
+      else
+          echo "⚠ Ray head status check failed. Continuing anyway..."
+      fi
+
+      # ------------------------------------------------------------------------------
+      # Start vLLM Distributed Server (Head Node)
+      # ------------------------------------------------------------------------------
+      echo ""
+      echo "========================================="
+      echo "Starting vLLM Distributed Server"
+      echo "========================================="
+      # Run vLLM with the Ray cluster
+      python -m vllm.entrypoints.api_server \
+          --host "$VLLM_HOST" \
+          --port "$VLLM_PORT" \
+          --model "meta-llama/Llama-2-7b-chat-hf" \
+          --tensor-parallel-size "$SLURM_NNODES" \
+          --dtype auto \
+          --max-model-len 8192 \
+          --enforce-eager \
+          --distributed-executor-backend "ray"
+      
+      # Cleanup function
+      cleanup() {
+          echo ""
+          echo "Shutting down Ray head..."
+          ray stop
+          echo "✓ Ray head stopped"
+      }
+      trap cleanup EXIT INT TERM
+
+      # Keep head alive - wait for Ray head process
+      wait $RAY_HEAD_PID
+      EXIT_CODE=$?
+      echo ""
+      echo "Ray head exited with code: $EXIT_CODE"
+      exit $EXIT_CODE
+
+  #
+  ----------------------------------------------------------------------------------
+
+  # WORKER NODE LOGIC (SLURM_PROCID > 0)
+
+  #
+  ----------------------------------------------------------------------------------
+
+  else
+      echo "This is a worker node."
+
+      # Wait for Ray head node to be ready
+      echo "Waiting for Ray head to be available (45 seconds)..."
+      sleep 45
+      
+      # Start Ray worker
+      echo "Starting Ray worker..."
+      # FIX: Explicitly connect to the Head Address and Port (IP:PORT)
+      ray start \
+          --address="$RAY_HEAD_ADDRESS:$RAY_HEAD_PORT" \
+          --num-gpus=$GPU_COUNT \
+          --block &
+      
+      RAY_WORKER_PID=$!
+      echo "✓ Ray worker PID: $RAY_WORKER_PID"
+      
+      # Wait for connection
+      sleep 15
+      
+      # Check if connected
+      # FIX: Use the full address (IP:PORT) for the status check
+      if ray status --address="$RAY_HEAD_ADDRESS:$RAY_HEAD_PORT" 2>/dev/null; then
+          echo "✓ Successfully connected to Ray cluster"
+      else
+          echo "⚠ Could not verify Ray connection (This may indicate a failure)"
+      fi
+
+      # Cleanup function
+      cleanup() {
+          echo ""
+          echo "Shutting down Ray worker..."
+          ray stop
+          echo "✓ Ray worker stopped"
+      }
+      trap cleanup EXIT INT TERM
+
+      echo ""
+      echo "========================================="
+      echo "Worker Node: Connected and Ready"
+      echo "========================================="
+      echo "This node's GPUs are now available to the Ray cluster"
+      echo "Worker will remain active until job completion"
+      echo ""
+      
+      # Keep worker alive - wait for Ray worker process
+      wait $RAY_WORKER_PID
+      EXIT_CODE=$?
+      echo ""
+      echo "Ray worker exited with code: $EXIT_CODE"
+      exit $EXIT_CODE
+  fi

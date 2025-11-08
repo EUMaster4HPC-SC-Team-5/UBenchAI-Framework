@@ -231,6 +231,7 @@ class MonitorOrchestrator:
         """Build SLURM batch script for Prometheus"""
 
         resources = config.resources
+        partition = config.partition
         log_file = (
             self.log_directory
             / f"prometheus_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
@@ -242,7 +243,7 @@ class MonitorOrchestrator:
 #SBATCH --output={log_file}
 #SBATCH --error={log_file}
 #SBATCH --time={self.time_limit}
-#SBATCH --partition={self.partition}
+#SBATCH --partition={partition}
 #SBATCH --qos={self.qos}
 #SBATCH --account={self.account}
 #SBATCH --nodes=1
@@ -255,6 +256,7 @@ echo "Prometheus Monitor Starting"
 echo "========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $(hostname)"
+echo "Partititon: {partition}"
 echo "Date: $(date)"
 echo "========================================="
 
@@ -335,6 +337,7 @@ exit $?
         """Build SLURM batch script for Grafana"""
 
         resources = config.resources
+        partition = config.partition
         log_file = (
             self.log_directory
             / f"grafana_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
@@ -346,7 +349,7 @@ exit $?
 #SBATCH --output={log_file}
 #SBATCH --error={log_file}
 #SBATCH --time={self.time_limit}
-#SBATCH --partition={self.partition}
+#SBATCH --partition={partition}
 #SBATCH --qos={self.qos}
 #SBATCH --account={self.account}
 #SBATCH --nodes=1
@@ -359,6 +362,7 @@ echo "Grafana Monitor Starting"
 echo "========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $(hostname)"
+echo "Partition: {partition}"
 echo "Date: $(date)"
 echo "========================================="
 

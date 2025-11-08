@@ -12,6 +12,7 @@ prometheus:
   scrape_interval: 15s
   retention_time: 24h
   port: 9090
+  partition: cpu
   resources:
     cpu_cores: 2
     memory_gb: 4
@@ -21,6 +22,7 @@ grafana:
   enabled: true
   image: docker://grafana/grafana:latest
   port: 3000
+  partition: cpu
   admin_password: admin
   dashboards:
     - vllm-metrics

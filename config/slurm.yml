@@ -6,7 +6,7 @@ slurm:
   # These can be overridden by environment variables or constructor args
   partition: gpu
   qos: default
-  time_limit: "00:10:00"
+  time_limit: "00:30:00"
   
   # Module configuration for MeluXina
   module_env: "env/release/2024.1"

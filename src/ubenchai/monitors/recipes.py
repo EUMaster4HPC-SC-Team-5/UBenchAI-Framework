@@ -34,6 +34,7 @@ class PrometheusConfig:
     scrape_interval: str = "15s"
     retention_time: str = "24h"
     port: int = 9090
+    partition: str = "cpu"
     resources: Dict = field(
         default_factory=lambda: {
             "cpu_cores": 2,
@@ -55,6 +56,7 @@ class GrafanaConfig:
     enabled: bool = True
     image: str = "docker://grafana/grafana:latest"
     port: int = 3000
+    partition: str = "cpu"
     admin_password: str = "admin"
     dashboards: List[str] = field(default_factory=list)
     resources: Dict = field(
@@ -184,6 +186,7 @@ class MonitorRecipe:
             scrape_interval=prom_data.get("scrape_interval", "15s"),
             retention_time=prom_data.get("retention_time", "24h"),
             port=prom_data.get("port", 9090),
+            partition=prom_data.get("partition", "cpu"),
             resources=prom_data.get("resources", {}),
         )
 
@@ -194,6 +197,7 @@ class MonitorRecipe:
             image=graf_data.get("image", "docker://grafana/grafana:latest"),
             port=graf_data.get("port", 3000),
             admin_password=graf_data.get("admin_password", "admin"),
+            partition=graf_data.get("partition", "cpu"),
             dashboards=graf_data.get("dashboards", []),
             resources=graf_data.get("resources", {}),
         )
