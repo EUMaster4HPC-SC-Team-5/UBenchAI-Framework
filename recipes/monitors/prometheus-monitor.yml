@@ -1,0 +1,121 @@
+name: prometheus-monitor
+description: Prometheus monitoring service
+image: docker://prom/prometheus:latest
+
+resources:
+  cpu_cores: 2
+  memory_gb: 4
+  gpu_count: 0
+  disk_gb: 50
+  nodes: 1
+  ntasks: 1
+
+ports:
+  - container_port: 9090
+    host_port: 9090
+    protocol: tcp
+
+environment:
+  PROMETHEUS_RETENTION_TIME: "24h"
+
+volumes:
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/prometheus/config
+    container_path: /etc/prometheus
+    readonly: false
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/prometheus/data
+    container_path: /prometheus
+    readonly: false
+
+command:
+  - /bin/sh
+  - -c
+  - |
+    set -e
+    
+    echo "========================================="
+    echo "Prometheus Starting"
+    echo "========================================="
+    echo "Hostname: $(hostname)"
+    echo "Date: $(date)"
+    echo "========================================="
+    
+    # Wait for configuration file
+    echo "Waiting for prometheus.yml configuration..."
+    timeout=60
+    while [ ! -f /etc/prometheus/prometheus.yml ] && [ $timeout -gt 0 ]; do
+        sleep 1
+        timeout=$((timeout - 1))
+    done
+    
+    if [ ! -f /etc/prometheus/prometheus.yml ]; then
+        echo "✗ Configuration file not found, creating default..."
+        cat > /etc/prometheus/prometheus.yml <<EOF
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+    EOF
+    fi
+    
+    echo "Configuration file:"
+    cat /etc/prometheus/prometheus.yml
+    
+    # Start Prometheus
+    echo ""
+    echo "Starting Prometheus server..."
+    /bin/prometheus \
+        --config.file=/etc/prometheus/prometheus.yml \
+        --storage.tsdb.path=/prometheus \
+        --storage.tsdb.retention.time=24h \
+        --web.console.libraries=/usr/share/prometheus/console_libraries \
+        --web.console.templates=/usr/share/prometheus/consoles \
+        --web.listen-address=0.0.0.0:9090 &
+    
+    PROM_PID=$!
+    echo "✓ Prometheus PID: $PROM_PID"
+    
+    # Cleanup function
+    cleanup() {
+        echo ""
+        echo "Shutting down Prometheus..."
+        kill $PROM_PID 2>/dev/null || true
+        wait $PROM_PID 2>/dev/null || true
+        echo "✓ Prometheus stopped"
+    }
+    trap cleanup EXIT INT TERM
+    
+    # Wait for Prometheus to be ready
+    echo "Waiting for Prometheus to be ready..."
+    sleep 10
+    
+    if ! kill -0 $PROM_PID 2>/dev/null; then
+        echo "✗ Prometheus process died during startup"
+        exit 1
+    fi
+    
+    COMPUTE_NODE=$(hostname)
+    echo ""
+    echo "========================================="
+    echo "Prometheus Ready!"
+    echo "========================================="
+    echo "Web UI: http://${COMPUTE_NODE}:9090"
+    echo ""
+    echo "Test from login node:"
+    echo "  curl http://${COMPUTE_NODE}:9090/api/v1/targets"
+    echo ""
+    echo "Add target vLLM by updating:"
+    echo "  /project/scratch/\$SLURM_JOB_ACCOUNT/team-5/prometheus/config/prometheus.yml"
+    echo "========================================="
+    
+    # Keep container alive
+    wait $PROM_PID
+    EXIT_CODE=$?
+    echo ""
+    echo "Prometheus exited with code: $EXIT_CODE"
+    exit $EXIT_CODE
+
+working_dir: /prometheus

@@ -1,0 +1,112 @@
+name: grafana-monitor
+description: Grafana visualization service
+image: docker://grafana/grafana:latest
+
+resources:
+  cpu_cores: 2
+  memory_gb: 4
+  gpu_count: 0
+  disk_gb: 20
+  nodes: 1
+  ntasks: 1
+
+ports:
+  - container_port: 3000
+    host_port: 3000
+    protocol: tcp
+
+environment:
+  GF_SECURITY_ADMIN_PASSWORD: "admin"
+  GF_USERS_ALLOW_SIGN_UP: "false"
+  GF_PATHS_PROVISIONING: "/etc/grafana/provisioning"
+
+volumes:
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/grafana/data
+    container_path: /var/lib/grafana
+    readonly: false
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/grafana/provisioning
+    container_path: /etc/grafana/provisioning
+    readonly: false
+
+command:
+  - /bin/sh
+  - -c
+  - |
+    set -e
+    
+    echo "========================================="
+    echo "Grafana Starting"
+    echo "========================================="
+    echo "Hostname: $(hostname)"
+    echo "Date: $(date)"
+    echo "========================================="
+    
+    # Ensure directories exist
+    mkdir -p /var/lib/grafana
+    mkdir -p /etc/grafana/provisioning/datasources
+    mkdir -p /etc/grafana/provisioning/dashboards
+    
+    # Wait for datasource configuration
+    echo "Checking for datasource configuration..."
+    if [ ! -f /etc/grafana/provisioning/datasources/prometheus.yml ]; then
+        echo "Creating default Prometheus datasource..."
+        cat > /etc/grafana/provisioning/datasources/prometheus.yml <<EOF
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://localhost:9090
+        isDefault: true
+        editable: true
+    EOF
+    fi
+    
+    # Start Grafana
+    echo ""
+    echo "Starting Grafana server..."
+    /run.sh &
+    GRAFANA_PID=$!
+    echo "✓ Grafana PID: $GRAFANA_PID"
+    
+    # Cleanup function
+    cleanup() {
+        echo ""
+        echo "Shutting down Grafana..."
+        kill $GRAFANA_PID 2>/dev/null || true
+        wait $GRAFANA_PID 2>/dev/null || true
+        echo "✓ Grafana stopped"
+    }
+    trap cleanup EXIT INT TERM
+    
+    # Wait for Grafana to be ready
+    echo "Waiting for Grafana to be ready (30 seconds)..."
+    sleep 30
+    
+    if ! kill -0 $GRAFANA_PID 2>/dev/null; then
+        echo "✗ Grafana process died during startup"
+        exit 1
+    fi
+    
+    COMPUTE_NODE=$(hostname)
+    echo ""
+    echo "========================================="
+    echo "Grafana Ready!"
+    echo "========================================="
+    echo "Web UI: http://${COMPUTE_NODE}:3000"
+    echo "Username: admin"
+    echo "Password: admin"
+    echo ""
+    echo "Access from your browser:"
+    echo "  1. SSH tunnel: ssh -L 3000:${COMPUTE_NODE}:3000 user@meluxina"
+    echo "  2. Browse: http://localhost:3000"
+    echo "========================================="
+    
+    # Keep container alive
+    wait $GRAFANA_PID
+    EXIT_CODE=$?
+    echo ""
+    echo "Grafana exited with code: $EXIT_CODE"
+    exit $EXIT_CODE
+
+working_dir: /usr/share/grafana
