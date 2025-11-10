@@ -13,6 +13,7 @@ resources:
   disk_gb: 100
   nodes: 1
   ntasks: 1
+  time_limit: "00:30:00"
 
 ports:
   - container_port: 6333

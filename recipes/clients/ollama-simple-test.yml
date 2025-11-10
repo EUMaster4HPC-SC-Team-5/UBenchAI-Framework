@@ -17,7 +17,7 @@ dataset:
   params:
     prompt_length: 50
     num_prompts: 100
-    model_name: tinyllama
+    model_name: tinyllama:latest
 
 orchestration:
   mode: slurm

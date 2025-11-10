@@ -1,0 +1,37 @@
+name: ollama-stress-test
+description: HPC stress test for Ollama - sustained high load
+
+target:
+  service: ollama-llm
+  protocol: http
+  timeout_seconds: 180         
+
+workload:
+  pattern: closed-loop
+  duration_seconds: 600        
+  concurrent_users: 15         
+  think_time_ms: 200           
+
+dataset:
+  type: synthetic
+  params:
+    prompt_length: 200         
+    max_tokens: 100           
+    num_prompts: 500
+    temperature: 0.8
+    model_name: tinyllama:latest
+
+orchestration:
+  mode: slurm
+  resources:
+    partition: cpu
+    cpu_cores: 8
+    memory_gb: 16
+
+output:
+  metrics:
+    - latency
+    - throughput
+    - errors
+  format: json
+  destination: ./results
