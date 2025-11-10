@@ -1,0 +1,38 @@
+name: vllm-stress-test
+description: HPC stress test for vLLM - realistic LLM inference workload
+
+target:
+  service: vllm-singlenode
+  protocol: http
+  timeout_seconds: 120         
+
+workload:
+  pattern: closed-loop
+  duration_seconds: 600        
+  concurrent_users: 20         
+  think_time_ms: 100           
+
+dataset:
+  type: synthetic
+  params:
+    prompt_length: 256         
+    max_tokens: 128            
+    num_prompts: 500
+    temperature: 0.7           
+    top_p: 0.9
+    model_name: facebook/opt-125m
+
+orchestration:
+  mode: slurm
+  resources:
+    partition: cpu
+    cpu_cores: 8               
+    memory_gb: 16
+
+output:
+  metrics:
+    - latency
+    - throughput
+    - errors  
+  format: json
+  destination: ./results

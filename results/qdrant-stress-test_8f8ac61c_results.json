@@ -1,0 +1,42 @@
+{
+  "config": {
+    "endpoint": "http://mel2110:6333",
+    "service_type": "qdrant",
+    "model": "tinyllama",
+    "pattern": "closed-loop",
+    "duration": 600,
+    "concurrent_users": 50,
+    "requests_per_second": null,
+    "think_time": 10,
+    "prompt_length": 50,
+    "operation": "search",
+    "output": "./results/qdrant-stress-test_8f8ac61c_results.json"
+  },
+  "metrics": {
+    "total_requests": 427427,
+    "successful_requests": 270158,
+    "failed_requests": 157269,
+    "success_rate": 0.6320564681220419,
+    "duration_seconds": 600.065731,
+    "throughput_rps": 450.2140116380017,
+    "latency_min": 0.006443023681640625,
+    "latency_max": 0.533146858215332,
+    "latency_mean": 0.05921219734962041,
+    "latency_median": 0.05858337879180908,
+    "latency_p50": 0.05858349800109863,
+    "latency_p95": 0.06570768356323242,
+    "latency_p99": 0.07163000106811523
+  },
+  "errors": [
+    "Request error: HTTPConnectionPool(host='mel2110', port=6333): Max retries exceeded with url: /collections/benchmark",
+    "Request error: HTTPConnectionPool(host='mel2110', port=6333): Max retries exceeded with url: /collections/benchmark",
+    "Request error: HTTPConnectionPool(host='mel2110', port=6333): Max retries exceeded with url: /collections/benchmark",
+    "Request error: HTTPConnectionPool(host='mel2110', port=6333): Max retries exceeded with url: /collections/benchmark",
+    "Request error: HTTPConnectionPool(host='mel2110', port=6333): Max retries exceeded with url: /collections/benchmark",
+    "Request error: HTTPConnectionPool(host='mel2110', port=6333): Max retries exceeded with url: /collections/benchmark",
+    "Request error: HTTPConnectionPool(host='mel2110', port=6333): Max retries exceeded with url: /collections/benchmark",
+    "Request error: HTTPConnectionPool(host='mel2110', port=6333): Max retries exceeded with url: /collections/benchmark",
+    "Request error: HTTPConnectionPool(host='mel2110', port=6333): Max retries exceeded with url: /collections/benchmark",
+    "Request error: HTTPConnectionPool(host='mel2110', port=6333): Max retries exceeded with url: /collections/benchmark"
+  ]
+}

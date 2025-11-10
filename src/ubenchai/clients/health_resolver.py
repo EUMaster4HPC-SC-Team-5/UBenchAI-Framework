@@ -11,6 +11,27 @@ from loguru import logger
 from ubenchai.clients.recipes import ClientRecipe, TargetSpec
 
 
+# Service port mapping
+SERVICE_PORTS = {
+    "ollama": 11434,
+    "ollama-llm": 11434,
+    "qdrant": 6333,
+    "qdrant-vectordb": 6333,
+    "vllm": 8000,
+    "vllm-inference": 8000,
+}
+
+# Service health check endpoints
+SERVICE_HEALTH_ENDPOINTS = {
+    "ollama": "/api/tags",
+    "ollama-llm": "/api/tags",
+    "qdrant": "/healthz",
+    "qdrant-vectordb": "/healthz",
+    "vllm": "/health",
+    "vllm-inference": "/health",
+}
+
+
 class HealthResolver:
     """
     Resolves and validates server endpoints before client execution.
@@ -58,12 +79,41 @@ class HealthResolver:
 
         raise ValueError(f"Cannot resolve endpoint for target: {target}")
 
+    def _get_service_port(self, service_name: str) -> int:
+        """Get port for a service, with fallback"""
+        # Try exact match first
+        if service_name in SERVICE_PORTS:
+            return SERVICE_PORTS[service_name]
+        
+        # Try partial match
+        for key, port in SERVICE_PORTS.items():
+            if key in service_name.lower():
+                return port
+        
+        # Default fallback
+        logger.warning(f"Unknown service {service_name}, using default port 8000")
+        return 8000
+
+    def _get_health_endpoint(self, service_name: str) -> str:
+        """Get health check endpoint for a service"""
+        # Try exact match
+        if service_name in SERVICE_HEALTH_ENDPOINTS:
+            return SERVICE_HEALTH_ENDPOINTS[service_name]
+        
+        # Try partial match
+        for key, endpoint in SERVICE_HEALTH_ENDPOINTS.items():
+            if key in service_name.lower():
+                return endpoint
+        
+        # Default fallback
+        return "/"
+
     def _find_service_by_name(self, service_name: str) -> Optional[str]:
         """
         Find service endpoint by querying SLURM for running jobs
 
         Args:
-            service_name: Name of the service (e.g., "ollama-llm")
+            service_name: Name of the service (e.g., "ollama-llm", "qdrant-vectordb")
 
         Returns:
             Endpoint URL if found, None otherwise
@@ -97,9 +147,9 @@ class HealthResolver:
 
                 # Check if job name matches service name
                 if service_name in job_name:
-                    # Construct endpoint
-                    # TODO: Get port from recipe or config
-                    endpoint = f"http://{node}:11434"
+                    # Get port for this service
+                    port = self._get_service_port(service_name)
+                    endpoint = f"http://{node}:{port}"
                     logger.info(
                         f"Found service {service_name} on {node} (job {job_id})"
                     )
@@ -153,9 +203,12 @@ class HealthResolver:
             if not url.startswith(("http://", "https://")):
                 url = f"http://{url}"
 
+            # Get service-specific health endpoint
+            health_path = self._get_health_endpoint(target.service or "")
+            
             # Try a simple GET request
             response = requests.get(
-                f"{url}/api/tags",  # Ollama-specific endpoint
+                f"{url}{health_path}",
                 timeout=target.timeout_seconds,
             )
 
@@ -218,7 +271,8 @@ class HealthResolver:
                 parts = line.split("|")
                 if len(parts) == 3:
                     job_id, job_name, node = parts
-                    endpoint = f"http://{node}:11434"
+                    port = self._get_service_port(job_name)
+                    endpoint = f"http://{node}:{port}"
                     services[job_name] = endpoint
 
             logger.info(f"Found {len(services)} running services")

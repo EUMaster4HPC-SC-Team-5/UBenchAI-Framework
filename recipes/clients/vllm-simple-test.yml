@@ -1,0 +1,48 @@
+name: vllm-simple-test
+description: Simple benchmark test for vLLM single-node inference server
+
+# Target specification
+target:
+  service: vllm-singlenode  # Name of the running service to benchmark
+  # endpoint: "http://mel2067:8000"  # Or specify direct endpoint
+  protocol: http
+  timeout_seconds: 60  # Longer timeout for LLM inference
+
+# Workload configuration
+workload:
+  pattern: closed-loop  # or open-loop
+  duration_seconds: 120  # 2 minutes
+  concurrent_users: 3
+  think_time_ms: 500  # Wait 500ms between requests
+  # requests_per_second: 2  # Uncomment for open-loop (lower rate for LLM)
+
+# Dataset configuration
+dataset:
+  type: synthetic
+  params:
+    model_name: facebook/opt-125m  # Model loaded in vLLM
+    prompt_length: 50
+    max_tokens: 20  # Limit response length for faster benchmarks
+    temperature: 0.7
+    top_p: 1.0
+
+# Orchestration (SLURM)
+orchestration:
+  mode: slurm
+  resources:
+    partition: cpu
+    cpu_cores: 4
+    memory_gb: 8
+
+# Output configuration
+output:
+  metrics:
+    - latency
+    - throughput
+    - errors
+    - success_rate
+    - p50
+    - p95
+    - p99
+  format: json
+  destination: ./results

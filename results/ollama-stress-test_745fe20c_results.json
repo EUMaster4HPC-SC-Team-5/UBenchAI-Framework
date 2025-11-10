@@ -1,0 +1,31 @@
+{
+  "config": {
+    "endpoint": "http://mel2139:11434",
+    "service_type": "ollama",
+    "model": "tinyllama:latest",
+    "pattern": "closed-loop",
+    "duration": 600,
+    "concurrent_users": 15,
+    "requests_per_second": null,
+    "think_time": 200,
+    "prompt_length": 200,
+    "operation": "search",
+    "output": "./results/ollama-stress-test_745fe20c_results.json"
+  },
+  "metrics": {
+    "total_requests": 2208,
+    "successful_requests": 2208,
+    "failed_requests": 0,
+    "success_rate": 1.0,
+    "duration_seconds": 604.062823,
+    "throughput_rps": 3.655248950819806,
+    "latency_min": 0.38921666145324707,
+    "latency_max": 4.243616342544556,
+    "latency_mean": 3.8901982480201167,
+    "latency_median": 3.9103105068206787,
+    "latency_p50": 3.910323143005371,
+    "latency_p95": 3.938499689102173,
+    "latency_p99": 3.9454753398895264
+  },
+  "errors": []
+}

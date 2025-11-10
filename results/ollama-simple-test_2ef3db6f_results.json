@@ -1,0 +1,31 @@
+{
+  "config": {
+    "endpoint": "http://mel2117:11434",
+    "service_type": "ollama",
+    "model": "tinyllama:latest",
+    "pattern": "closed-loop",
+    "duration": 60,
+    "concurrent_users": 5,
+    "requests_per_second": null,
+    "think_time": 100,
+    "prompt_length": 50,
+    "operation": "search",
+    "output": "./results/ollama-simple-test_2ef3db6f_results.json"
+  },
+  "metrics": {
+    "total_requests": 225,
+    "successful_requests": 225,
+    "failed_requests": 0,
+    "success_rate": 1.0,
+    "duration_seconds": 61.286931,
+    "throughput_rps": 3.6712557853484293,
+    "latency_min": 0.3786146640777588,
+    "latency_max": 1.4626858234405518,
+    "latency_mean": 1.2494878504011366,
+    "latency_median": 1.2613673210144043,
+    "latency_p50": 1.2613673210144043,
+    "latency_p95": 1.2759130001068115,
+    "latency_p99": 1.2921483516693115
+  },
+  "errors": []
+}

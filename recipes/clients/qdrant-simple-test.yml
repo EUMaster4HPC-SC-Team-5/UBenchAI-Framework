@@ -1,0 +1,45 @@
+name: qdrant-simple-test
+description: Simple benchmark test for Qdrant vector database
+
+# Target specification
+target:
+  service: qdrant-vectordb  # Name of the running service to benchmark
+  # endpoint: "http://mel2067:6333"  # Or specify direct endpoint
+  protocol: http
+  timeout_seconds: 30
+
+# Workload configuration
+workload:
+  pattern: closed-loop  # or open-loop
+  duration_seconds: 60
+  concurrent_users: 5
+  think_time_ms: 100  # Time between requests per user
+  # requests_per_second: 10  # Uncomment for open-loop
+
+# Dataset configuration
+dataset:
+  type: synthetic
+  params:
+    collection_name: benchmark_collection
+    vector_size: 384  # Default embedding size
+    operation: search  # search, insert, or delete
+    batch_size: 10  # For insert operations
+    top_k: 10  # For search operations
+
+# Orchestration (SLURM)
+orchestration:
+  mode: slurm
+  resources:
+    partition: cpu
+    cpu_cores: 2
+    memory_gb: 4
+
+# Output configuration
+output:
+  metrics:
+    - latency
+    - throughput
+    - errors
+    - success_rate
+  format: json
+  destination: ./results

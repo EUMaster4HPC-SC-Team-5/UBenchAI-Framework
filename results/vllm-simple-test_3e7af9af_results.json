@@ -1,0 +1,31 @@
+{
+  "config": {
+    "endpoint": "http://mel2013:8000",
+    "service_type": "vllm",
+    "model": "facebook/opt-125m",
+    "pattern": "closed-loop",
+    "duration": 120,
+    "concurrent_users": 3,
+    "requests_per_second": null,
+    "think_time": 500,
+    "prompt_length": 50,
+    "operation": "search",
+    "output": "./results/vllm-simple-test_3e7af9af_results.json"
+  },
+  "metrics": {
+    "total_requests": 642,
+    "successful_requests": 642,
+    "failed_requests": 0,
+    "success_rate": 1.0,
+    "duration_seconds": 120.308567,
+    "throughput_rps": 5.336278338349754,
+    "latency_min": 0.05212712287902832,
+    "latency_max": 0.19854116439819336,
+    "latency_mean": 0.06152852784807437,
+    "latency_median": 0.059140682220458984,
+    "latency_p50": 0.059140920639038086,
+    "latency_p95": 0.07080292701721191,
+    "latency_p99": 0.11323308944702148
+  },
+  "errors": []
+}
