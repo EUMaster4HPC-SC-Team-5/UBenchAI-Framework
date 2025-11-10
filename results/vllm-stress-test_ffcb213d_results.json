@@ -1,0 +1,31 @@
+{
+  "config": {
+    "endpoint": "http://mel2071:8000",
+    "service_type": "vllm",
+    "model": "facebook/opt-125m",
+    "pattern": "closed-loop",
+    "duration": 600,
+    "concurrent_users": 20,
+    "requests_per_second": null,
+    "think_time": 100,
+    "prompt_length": 256,
+    "operation": "search",
+    "output": "./results/vllm-stress-test_ffcb213d_results.json"
+  },
+  "metrics": {
+    "total_requests": 57626,
+    "successful_requests": 57626,
+    "failed_requests": 0,
+    "success_rate": 1.0,
+    "duration_seconds": 600.126672,
+    "throughput_rps": 96.02306094470669,
+    "latency_min": 0.043142080307006836,
+    "latency_max": 0.579383134841919,
+    "latency_mean": 0.10503925231405603,
+    "latency_median": 0.10155987739562988,
+    "latency_p50": 0.10155987739562988,
+    "latency_p95": 0.11457943916320801,
+    "latency_p99": 0.24066734313964844
+  },
+  "errors": []
+}
