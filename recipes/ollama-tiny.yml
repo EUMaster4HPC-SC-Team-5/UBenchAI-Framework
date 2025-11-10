@@ -1,18 +1,15 @@
-# Ollama LLM inference service for MeluXina
-# Compatible with LuxProvide Apptainer setup
-
 name: ollama-llm
-description: Ollama LLM inference service with GPU support
+description: Ollama LLM inference server with TinyLlama
 image: docker://ollama/ollama:latest
 
 resources:
-  cpu_cores: 4
-  memory_gb: 16
+  cpu_cores: 8
+  memory_gb: 32
   gpu_count: 1
-  # gpu_type: null  # Don't specify - let MeluXina auto-detect
   disk_gb: 50
   nodes: 1
   ntasks: 1
+  ntasks_per_node: 1
 
 ports:
   - container_port: 11434
@@ -21,23 +18,32 @@ ports:
 
 environment:
   OLLAMA_HOST: "0.0.0.0:11434"
-  OLLAMA_ORIGINS: "*"
-  OLLAMA_NUM_PARALLEL: "4"
+  OLLAMA_MODELS: "/root/.ollama/models"
+  # SSL Certificates
+  SSL_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt"
+  CURL_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt"
 
 volumes:
-  # Project scratch directory for persistent model storage
-  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/ollama
+  # Model storage persistenti
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/$USER/ollama
     container_path: /root/.ollama
     readonly: false
+  
+  - host_path: /etc/ssl/certs
+    container_path: /etc/ssl/certs
+    readonly: true
+  
+  - host_path: /etc/pki
+    container_path: /etc/pki
+    readonly: true
 
 healthcheck:
-  endpoint: /api/tags
-  interval_seconds: 15
-  timeout_seconds: 10
+  endpoint: /
+  interval_seconds: 10
+  timeout_seconds: 5
   retries: 3
   initial_delay: 30
 
-# Command executed INSIDE the Apptainer container
 command:
   - /bin/bash
   - -c
@@ -51,9 +57,17 @@ command:
     echo "Date: $(date)"
     echo "========================================="
     
+    
+    echo "Checking SSL certificates..."
+    if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
+        echo "✓ CA certificates found"
+    else
+        echo "⚠ Warning: CA certificates not found"
+    fi
+    
     # Start Ollama server in background
     echo "Starting Ollama server..."
-    ollama serve > /tmp/ollama-server.log 2>&1 &
+    ollama serve &
     SERVER_PID=$!
     echo "✓ Server PID: $SERVER_PID"
     
@@ -67,58 +81,44 @@ command:
     }
     trap cleanup EXIT INT TERM
     
+    # Wait for server
     echo "Waiting for server to initialize (15 seconds)..."
     sleep 15
-
-    if ! kill -0 $SERVER_PID 2>/dev/null; then
-        echo "✗ Server process died during startup"
-        echo "=== Server Logs ==="
-        cat /tmp/ollama-server.log
-        exit 1
-    fi
     
-    # Download TinyLlama model
+    # Pull model
     echo ""
     echo "Downloading TinyLlama model (1.1B parameters)..."
-    if ollama pull tinyllama 2>&1; then
+    if ollama pull tinyllama; then
         echo "✓ Model downloaded successfully"
     else
         echo "✗ Model download failed"
         exit 1
     fi
     
-    # List available models
-    echo ""
-    echo "Available models:"
-    ollama list
-    
-    # Display connection information
+    # Display info
     COMPUTE_NODE=$(hostname)
     echo ""
     echo "========================================="
     echo "Ollama Server Ready!"
     echo "========================================="
-    echo "Endpoint: http://${COMPUTE_NODE}:11434"
+    echo "API Endpoint: http://${COMPUTE_NODE}:11434"
+    echo "Model: tinyllama"
     echo ""
-    echo "Test from login node or other jobs:"
+    echo "Test from login node:"
     echo "  curl http://${COMPUTE_NODE}:11434/api/tags"
     echo ""
-    echo "Example inference request:"
-    echo "  curl http://${COMPUTE_NODE}:11434/api/generate -d '{"
-    echo "    \"model\": \"tinyllama\","
-    echo "    \"prompt\": \"What is artificial intelligence?\","
-    echo "    \"stream\": false"
-    echo "  }'"
+    echo "Example generation:"
+    echo '  curl http://'"${COMPUTE_NODE}"':11434/api/generate \'
+    echo '    -d '"'"'{"model":"tinyllama","prompt":"Hello!","stream":false}'"'"
     echo ""
-    echo "Server logs: /tmp/ollama-server.log"
     echo "Job will run until time limit or manual cancellation"
     echo "========================================="
     
-    # Keep container alive - wait for server process
+    # Keep alive
     wait $SERVER_PID
     EXIT_CODE=$?
     echo ""
     echo "Server exited with code: $EXIT_CODE"
     exit $EXIT_CODE
 
-working_dir: /root
+working_dir: /workspace

@@ -1,0 +1,40 @@
+name: qdrant-stress-test
+description: HPC stress test for Qdrant vector database - high concurrency and throughput
+
+target:
+  service: qdrant-vectordb
+  protocol: http
+  timeout_seconds: 30
+
+workload:
+  pattern: closed-loop
+  duration_seconds: 600        
+  concurrent_users: 20         
+  think_time_ms: 50           
+
+dataset:
+  type: synthetic
+  params:
+    dimension: 768             
+    num_vectors: 100000       
+    operation_mix:
+      search: 0.70             
+      insert: 0.20             
+      delete: 0.10            
+    query_filters: true        
+    batch_size: 100            
+
+orchestration:
+  mode: slurm
+  resources:
+    partition: cpu
+    cpu_cores: 16              
+    memory_gb: 32              
+
+output:
+  metrics:
+    - latency
+    - throughput
+    - errors
+  format: json
+  destination: ./results

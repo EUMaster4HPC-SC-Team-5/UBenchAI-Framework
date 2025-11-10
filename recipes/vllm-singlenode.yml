@@ -1,0 +1,75 @@
+# vLLM Multi-Node LLM inference service for MeluXina
+# Uses tensor parallelism across multiple GPUs/nodes for large models
+# Example: Llama-2-70B or Mixtral-8x7B across 4 GPUs
+
+name: vllm-singlenode
+description: vLLM multi-node inference with tensor parallelism for large models
+image: docker://vllm/vllm-openai:v0.6.3.post1
+
+resources:
+  cpu_cores: 8
+  memory_gb: 128
+  gpu_count: 1  
+  disk_gb: 200
+  nodes: 1  
+  ntasks: 1  # 1 task per node
+  ntasks_per_node: 1
+
+ports:
+  - container_port: 8000
+    host_port: 8000
+    protocol: tcp
+
+environment:
+  VLLM_HOST: "0.0.0.0"
+  VLLM_PORT: "8000"
+  HF_HOME: "/root/.cache/huggingface"
+  # Multi-node communication
+  NCCL_DEBUG: "INFO"
+  NCCL_IB_DISABLE: "0"
+  NCCL_SOCKET_IFNAME: "ib0"
+  # Tensor parallelism configuration
+  VLLM_WORKER_MULTIPROC_METHOD: "spawn"
+
+volumes:
+  # Project scratch directory for persistent model storage
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/$USER/vllm
+    container_path: /root/.cache/huggingface
+    readonly: false
+
+healthcheck:
+  endpoint: /health
+  interval_seconds: 20
+  timeout_seconds: 15
+  retries: 3
+  initial_delay: 120  # Multi-node setup takes longer
+
+# Command executed INSIDE the Apptainer container
+command:
+  - /bin/bash
+  - -c
+  - |
+    set -e
+    
+    echo "========================================="
+    echo "vLLM Server Starting"
+    echo "========================================="
+    echo "Fixing NumPy version conflict..."
+    pip install 'numpy<2.0' --upgrade --quiet --no-cache-dir
+    
+    echo "Verifying NumPy version..."
+    python3 -c "import numpy; print(f'NumPy: {numpy.__version__}')"
+    
+    echo "Starting vLLM single-node server..."
+    echo "Model: facebook/opt-125m"
+    
+    python3 -m vllm.entrypoints.openai.api_server \
+        --model facebook/opt-125m \
+        --host 0.0.0.0 \
+        --port 8000 \
+        --dtype auto \
+        --max-model-len 2048 \
+        --gpu-memory-utilization 0.9 \
+        --disable-log-requests
+
+working_dir: /workspace

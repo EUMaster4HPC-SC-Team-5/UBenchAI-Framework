@@ -13,6 +13,7 @@ resources:
   disk_gb: 100
   nodes: 1
   ntasks: 1
+  time_limit: "00:30:00"
 
 ports:
   - container_port: 6333
@@ -29,10 +30,10 @@ environment:
 
 volumes:
   # Project scratch directory for persistent vector storage
-  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/qdrant/storage
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/$USER/qdrant/storage
     container_path: /qdrant/storage
     readonly: false
-  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/qdrant/snapshots
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/$USER/qdrant/snapshots
     container_path: /qdrant/snapshots
     readonly: false
 

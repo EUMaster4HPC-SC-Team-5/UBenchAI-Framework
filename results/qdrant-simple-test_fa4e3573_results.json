@@ -1,0 +1,31 @@
+{
+  "config": {
+    "endpoint": "http://mel2059:6333",
+    "service_type": "qdrant",
+    "model": "tinyllama",
+    "pattern": "closed-loop",
+    "duration": 60,
+    "concurrent_users": 5,
+    "requests_per_second": null,
+    "think_time": 100,
+    "prompt_length": 50,
+    "operation": "search",
+    "output": "./results/qdrant-simple-test_fa4e3573_results.json"
+  },
+  "metrics": {
+    "total_requests": 2842,
+    "successful_requests": 2842,
+    "failed_requests": 0,
+    "success_rate": 1.0,
+    "duration_seconds": 60.103451,
+    "throughput_rps": 47.28513841909011,
+    "latency_min": 0.0018010139465332031,
+    "latency_max": 0.39954495429992676,
+    "latency_mean": 0.004981727519562175,
+    "latency_median": 0.0042760372161865234,
+    "latency_p50": 0.0042760372161865234,
+    "latency_p95": 0.005454063415527344,
+    "latency_p99": 0.008087396621704102
+  },
+  "errors": []
+}

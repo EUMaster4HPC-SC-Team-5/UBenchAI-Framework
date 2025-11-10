@@ -132,8 +132,97 @@ def handle_server_commands(args):
 
 def handle_client_commands(args):
     """Handle client subcommands"""
-    logger.info(f"Client Module - Action: {args.action}")
-    # TODO: Initialize and run ClientManager based on args.action
+    logger.debug(f"handle_client_commands called with action: {args.action}")
+
+    from ubenchai.clients.manager import ClientManager
+
+    logger.debug("Creating ClientManager")
+    manager = ClientManager(recipe_directory="recipes/clients")
+    logger.debug("ClientManager created successfully")
+
+    try:
+        if args.action == "run":
+            logger.debug(f"Running client with recipe: {args.recipe}")
+            logger.info(f"Starting client from recipe: {args.recipe}")
+            run = manager.start_client(args.recipe)
+
+            print(f"\n✓ Client started successfully!")
+            print(f"   Run ID: {run.id}")
+            print(f"   Recipe: {run.recipe_name}")
+            print(f"   Status: {run.status.value}")
+            print(f"   Target: {run.target_endpoint}")
+            print(f"   Orchestrator Handle: {run.orchestrator_handle}")
+
+        elif args.action == "stop":
+            logger.info(f"Stopping client run: {args.run_id}")
+            success = manager.stop_client(args.run_id)
+
+            if success:
+                print(f"\n✓ Client run stopped: {args.run_id}")
+            else:
+                print(f"\n✗ Failed to stop run: {args.run_id}")
+                sys.exit(1)
+
+        elif args.action == "list":
+            print("\n📋 Available Recipes:")
+            recipes = manager.list_available_clients()
+            if recipes:
+                for recipe in recipes:
+                    info = manager.get_recipe_info(recipe)
+                    print(f"   • {recipe}: {info.get('description', 'No description')}")
+            else:
+                print("   No recipes found")
+
+            print("\n🏃 Running Clients:")
+            runs = manager.list_running_clients()
+            if runs:
+                table_data = []
+                for r in runs:
+                    table_data.append(
+                        [
+                            r["id"][:8],
+                            r["recipe_name"],
+                            r["status"],
+                            r["created_at"][:19],
+                        ]
+                    )
+                print(
+                    tabulate(
+                        table_data,
+                        headers=["Run ID", "Recipe", "Status", "Created At"],
+                        tablefmt="simple",
+                    )
+                )
+            else:
+                print("   No running clients")
+
+        elif args.action == "status":
+            logger.info(f"Getting status for run: {args.run_id}")
+            status = manager.get_client_status(args.run_id)
+
+            print(f"\n📊 Client Run Status:")
+            print(f"   Run ID: {status['id']}")
+            print(f"   Recipe: {status['recipe_name']}")
+            print(f"   Status: {status['status']}")
+            print(f"   Created: {status['created_at']}")
+            print(f"   Target: {status['target_endpoint']}")
+            print(f"   Orchestrator Handle: {status['orchestrator_handle']}")
+
+    except FileNotFoundError as e:
+        print(f"\n✗ Error: {e}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"\n✗ Validation Error: {e}")
+        logger.exception("Validation error details:")
+        sys.exit(1)
+    except RuntimeError as e:
+        print(f"\n✗ Runtime Error: {e}")
+        logger.exception("Runtime error details:")
+        sys.exit(1)
+    except Exception as e:
+        logger.exception("Unexpected error")
+        print(f"\n✗ Unexpected Error: {e}")
+        sys.exit(1)
 
 
 def handle_monitor_commands(args):
@@ -141,80 +230,184 @@ def handle_monitor_commands(args):
     logger.info(f"Monitor Module - Action: {args.action}")
     from ubenchai.monitors.manager import MonitorManager
 
-    manager = MonitorManager(
-        recipe_directory="recipes/monitors",
-        output_root="logs/monitors",
-        dashboards_directory="dashboards",
-    )
+    manager = MonitorManager(recipe_directory="recipes", output_root="logs")
 
-    try:
-        if args.action == "start":
-            logger.info(f"Starting monitoring stack from recipe: {args.recipe}")
+    if args.action == "start":
+        targets = []
+        if args.targets:
+            targets = [t.strip() for t in args.targets.split(",") if t.strip()]
+        inst = manager.start_monitor(args.recipe, targets=targets, mode=args.mode)
+        print("\n Monitor started:")
+        print(f"   Monitor ID: {inst.id}")
+        print(f"   Recipe: {inst.recipe.name}")
+        print(f"   Status: {inst.status}")
+        if inst.grafana_url:
+            print(f"   Grafana: {inst.grafana_url}")
+        if inst.prometheus_url:
+            print(f"   Prometheus: {inst.prometheus_url}")
+    elif args.action == "stop":
+        ok = manager.stop_monitor(args.monitor_id)
+        if ok:
+            print(f"\n Monitor stopped: {args.monitor_id}")
+        else:
+            print(f"\n Monitor not found: {args.monitor_id}")
+    elif args.action == "list":
+        print("\n Available Monitor Recipes:")
+        recs = manager.list_available_recipes()
+        if recs:
+            for r in recs:
+                print(f"   • {r}")
+        else:
+            print("   No monitor recipes found")
 
-            target_job_ids = None
-            if args.targets:
-                target_job_ids = [t.strip() for t in args.targets.split(",")]
-
-            instance = manager.start_monitor(
-                recipe_name=args.recipe,
-                target_job_ids=target_job_ids,
+        print("\n Running Monitors:")
+        mons = manager.list_running_monitors()
+        if mons:
+            table = []
+            for m in mons:
+                table.append(
+                    [m["id"][:8], m["recipe"]["name"], m["status"], m["created_at"]]
+                )
+            print(
+                tabulate(
+                    table,
+                    headers=["Monitor ID", "Recipe", "Status", "Created"],
+                    tablefmt="simple",
+                )
             )
+        else:
+            print("   No running monitors")
+    elif args.action == "metrics":
+        path = manager.export_metrics(args.monitor_id, output=args.output)
+        print("\n Metrics exported:")
+        print(f"   File: {path}")
+    elif args.action == "report":
+        # For now, just export metrics; users can run separate report command
+        path = manager.export_metrics(args.monitor_id)
+        print("\n Generated metrics snapshot for reporting:")
+        print(f"   File: {path}")
+    else:
+        raise ValueError("Unknown monitor action")
 
-            print(f"\n✓ Monitoring stack started!")
-            print(f"   Monitor ID: {instance.id}")
-            print(f"   Recipe: {instance.recipe.name}\n")
 
-            if instance.prometheus_url:
-                print(f"   Prometheus: {instance.prometheus_url}")
-            if instance.grafana_url:
-                print(f"   Grafana: {instance.grafana_url} (admin/admin)\n")
+def handle_report_commands(args):
+    """Handle report subcommands"""
+    from ubenchai.reports.manager import ReportManager
 
-        elif args.action == "stop":
-            success = manager.stop_monitor(args.monitor_id)
-            print(f"\n{'✓' if success else '✗'} Monitor {args.monitor_id}")
+    manager = ReportManager(recipe_directory="recipes", output_root="reports_output")
 
-        elif args.action == "list":
-            print("\n📊 Monitor Recipes:")
-            for recipe in manager.list_available_monitors():
-                info = manager.get_recipe_info(recipe)
-                print(f"   • {recipe}: {info.get('description', '')}")
+    if args.action == "list":
+        reports = manager.list_available_reports()
+        print("\n Available Report Recipes:")
+        if reports:
+            for r in reports:
+                print(f"   • {r}")
+        else:
+            print("   No report recipes found")
+    elif args.action == "start":
+        logger.info(f"Starting report from recipe: {args.recipe}")
+        job = manager.start_report(args.recipe)
+        print("\n Report started:")
+        print(f"   Job ID: {job.id}")
+        print(f"   Status: {job.status.value}")
+        print(f"   Output: {job.output_dir}")
+    elif args.action == "status":
+        status = manager.get_job_status(args.job_id)
+        print("\n Report Status:")
+        print(f"   Job ID: {status['id']}")
+        print(f"   Recipe: {status['recipe_name']}")
+        print(f"   Status: {status['status']}")
+        print(f"   Output Dir: {status['output_dir']}")
+    else:
+        raise ValueError("Unknown report action")
 
-            print("\n🔍 Running Monitors:")
-            monitors = manager.list_running_monitors()
-            if monitors:
-                from tabulate import tabulate
 
-                table = [
-                    [
-                        m["id"][:8],
-                        m["recipe_name"],
-                        m["status"],
-                        m.get("prometheus_url", "N/A")[:30],
-                    ]
-                    for m in monitors
-                ]
-                print(tabulate(table, headers=["ID", "Recipe", "Status", "Prometheus"]))
-            else:
-                print("   None running")
+def handle_web_commands(args):
+    """Handle web dashboard commands"""
+    from ubenchai.web.dashboard import WebDashboard
 
-        elif args.action == "metrics":
-            status = manager.get_monitor_status(args.monitor_id)
-            print(f"\n📊 {status['recipe_name']} ({status['status']})")
-            if status.get("prometheus_url"):
-                print(f"   Prometheus: {status['prometheus_url']}")
-            if status.get("grafana_url"):
-                print(f"   Grafana: {status['grafana_url']}")
+    if args.action == "start":
+        logger.info(f"Starting web dashboard on {args.host}:{args.port}")
+        dashboard = WebDashboard(
+            host=args.host,
+            port=args.port,
+            debug=args.debug,
+            recipe_directory=args.recipe_directory,
+            output_root=args.output_root,
+        )
 
-        elif args.action == "report":
-            status = manager.get_monitor_status(args.monitor_id)
-            print(f"\n📈 Monitor Report: {status['recipe_name']}")
-            for name, comp in status.get("components", {}).items():
-                print(f"   {name}: {comp['endpoint']} ({comp['status']})")
+        print(f"\n Web Dashboard Starting...")
+        print(f"   URL: http://{args.host}:{args.port}")
+        print(f"   Recipe Directory: {args.recipe_directory}")
+        print(f"   Output Root: {args.output_root}")
+        print(f"   Debug Mode: {args.debug}")
+        print(f"\n Press Ctrl+C to stop the dashboard")
 
-    except Exception as e:
-        logger.exception("Monitor command failed")
-        print(f"\n✗ Error: {e}")
-        sys.exit(1)
+        try:
+            dashboard.run()
+        except KeyboardInterrupt:
+            print(f"\n Dashboard stopped by user")
+            logger.info("Web dashboard stopped by user")
+    else:
+        raise ValueError("Unknown web action")
+
+
+def handle_analysis_commands(args):
+    """Handle analysis commands"""
+    from ubenchai.analysis.analyzer import MetricsAnalyzer
+
+    analyzer = MetricsAnalyzer()
+
+    if args.action == "analyze":
+        logger.info(f"Analyzing metrics file: {args.file}")
+        summaries = analyzer.analyze_metrics_file(args.file)
+
+        print(f"\n Metrics Analysis Results:")
+        print(f"   File: {args.file}")
+        print(f"   Metrics Found: {len(summaries)}")
+
+        for name, summary in summaries.items():
+            print(f"\n   {name}:")
+            print(f"     Count: {summary.count}")
+            print(f"     Mean: {summary.mean:.2f}")
+            print(f"     Median: {summary.median:.2f}")
+            print(f"     Min/Max: {summary.min_value:.2f} / {summary.max_value:.2f}")
+            print(f"     Std Dev: {summary.std_dev:.2f}")
+
+    elif args.action == "compare":
+        logger.info(f"Comparing metrics: {args.baseline} vs {args.comparison}")
+        results = analyzer.compare_metrics(args.baseline, args.comparison)
+
+        print(f"\n Metrics Comparison Results:")
+        print(f"   Baseline: {args.baseline}")
+        print(f"   Comparison: {args.comparison}")
+        print(f"   Metrics Compared: {len(results)}")
+
+        for result in results:
+            print(f"\n   {result.metric_name}:")
+            print(f"     Baseline: {result.baseline_value:.2f}")
+            print(f"     Comparison: {result.comparison_value:.2f}")
+            print(f"     Change: {result.percent_change:+.1f}% ({result.significance})")
+
+    elif args.action == "trends":
+        logger.info(f"Analyzing trends across {len(args.files)} files")
+        trends = analyzer.analyze_trends(args.files)
+
+        print(f"\n Trend Analysis Results:")
+        print(f"   Files Analyzed: {trends['files_analyzed']}")
+        print(f"   Metrics with Trends: {len(trends['trends'])}")
+
+        for metric_name, trend_data in trends["trends"].items():
+            print(f"\n   {metric_name}:")
+            print(f"     Trend: {trend_data['trend']}")
+            print(f"     Volatility: {trend_data['volatility']:.2f}")
+            print(
+                f"     Range: {trend_data['min_value']:.2f} - {trend_data['max_value']:.2f}"
+            )
+            print(f"     Data Points: {trend_data['data_points']}")
+
+    else:
+        raise ValueError("Unknown analysis action")
 
 
 def create_parser():
@@ -327,6 +520,12 @@ For more information, visit:
     monitor_start.add_argument(
         "--targets", help="Comma-separated list of target services to monitor"
     )
+    monitor_start.add_argument(
+        "--mode",
+        choices=["local", "slurm"],
+        default="local",
+        help="Run mode: local (default) or slurm",
+    )
 
     # Monitor stop
     monitor_stop = monitor_subparsers.add_parser(
@@ -358,6 +557,87 @@ For more information, visit:
         help="Report format (default: html)",
     )
 
+    # Report subcommand (standalone reports from saved metrics)
+    report_parser = subparsers.add_parser("report", help="Generate and manage reports")
+    report_subparsers = report_parser.add_subparsers(
+        dest="action", help="Report actions", required=True
+    )
+
+    # Report list
+    report_subparsers.add_parser("list", help="List available report recipes")
+
+    # Report start
+    report_start = report_subparsers.add_parser(
+        "start", help="Start a report generation job from a recipe"
+    )
+    report_start.add_argument(
+        "--recipe", required=True, help="Name of the report recipe to run"
+    )
+
+    # Report status
+    report_status = report_subparsers.add_parser(
+        "status", help="Get status of a report job"
+    )
+    report_status.add_argument("job_id", help="Report job ID")
+
+    # Web dashboard subcommand
+    web_parser = subparsers.add_parser("web", help="Web dashboard interface")
+    web_subparsers = web_parser.add_subparsers(
+        dest="action", help="Web actions", required=True
+    )
+
+    # Web start
+    web_start = web_subparsers.add_parser("start", help="Start the web dashboard")
+    web_start.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Host to bind the web server (default: 0.0.0.0)",
+    )
+    web_start.add_argument(
+        "--port",
+        type=int,
+        default=5000,
+        help="Port to bind the web server (default: 5000)",
+    )
+    web_start.add_argument("--debug", action="store_true", help="Enable debug mode")
+    web_start.add_argument(
+        "--recipe-directory",
+        default="recipes",
+        help="Directory containing recipes (default: recipes)",
+    )
+    web_start.add_argument(
+        "--output-root",
+        default="logs",
+        help="Root directory for outputs (default: logs)",
+    )
+
+    # Analysis subcommand
+    analysis_parser = subparsers.add_parser(
+        "analysis", help="Metrics analysis and comparison"
+    )
+    analysis_subparsers = analysis_parser.add_subparsers(
+        dest="action", help="Analysis actions", required=True
+    )
+
+    # Analysis analyze
+    analysis_analyze = analysis_subparsers.add_parser(
+        "analyze", help="Analyze metrics from a file"
+    )
+    analysis_analyze.add_argument("file", help="Path to metrics JSON file")
+
+    # Analysis compare
+    analysis_compare = analysis_subparsers.add_parser(
+        "compare", help="Compare metrics between two files"
+    )
+    analysis_compare.add_argument("baseline", help="Path to baseline metrics file")
+    analysis_compare.add_argument("comparison", help="Path to comparison metrics file")
+
+    # Analysis trends
+    analysis_trends = analysis_subparsers.add_parser(
+        "trends", help="Analyze trends across multiple files"
+    )
+    analysis_trends.add_argument("files", nargs="+", help="Paths to metrics files")
+
     return parser
 
 
@@ -378,6 +658,12 @@ def main():
         handle_client_commands(args)
     elif args.command == "monitor":
         handle_monitor_commands(args)
+    elif args.command == "report":
+        handle_report_commands(args)
+    elif args.command == "web":
+        handle_web_commands(args)
+    elif args.command == "analysis":
+        handle_analysis_commands(args)
 
 
 if __name__ == "__main__":
