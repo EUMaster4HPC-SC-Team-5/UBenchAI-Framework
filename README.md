@@ -695,144 +695,224 @@ classDiagram
 
 
 ### Monitor Module
-The Monitor Module provides lifecycle management for monitoring instances. It loads recipes, deploys Prometheus collectors, persists metrics for reporting and integrates with Grafana dashboards. It supports both local runs and HPC deployments (Slurm/K8S).
 
-```mermaid
-classDiagram
-    %% Core Monitoring Classes
-    class MonitorManager {
-        -running_monitors: Dict[str, MonitorInstance]
-        -recipe_loader: RecipeLoader
-        -prometheus_client: PrometheusClient
-        -grafana_client: GrafanaClient
-        -report_manager: ReportManager
-        -logger: Logger
-        +start_monitor(recipe_name: str, config: dict) MonitorInstance
-        +stop_monitor(monitor_id: str) bool
-        +list_monitor_descriptions() List[str]
-        +list_running_monitors() List[MonitorInstance]
-        +check_monitor(monitor_id: str) MonitorStatus
-        +collect_metrics_in_file(monitor_id: str, filepath: str) bool
-        +show_metrics(monitor_id: str) str
-        +construct_report(monitor_id: str) Report
-    }
+Start monitoring and metrics collection:
 
-    class MonitorInstance {
-        -id: str
-        -recipe: MonitorRecipe
-        -status: MonitorStatus
-        -prometheus_instance_id: str
-        -grafana_instance_id: str
-        -created_at: datetime
-        -target_services: List[str]
-        +start() bool
-        +stop() bool
-        +get_status() MonitorStatus
-        +health_check() bool
-        +get_logs() str
-        +get_metrics() dict
-    }
+```bash
+# Start monitoring
+ubenchai monitor start --recipe <recipe-name> [--targets <service1,service2>]
 
-    class MonitorRecipe {
-        -name: str
-        -target_services: List[str]
-        -collection_interval: str
-        -retention_period: str
-        -prometheus_config: dict
-        -grafana_config: dict
-        +validate() bool
-        +to_dict() dict
-        +from_yaml(yaml_path: str) MonitorRecipe
-    }
+# Stop monitoring
+ubenchai monitor stop <monitor-id>
 
-    class RecipeLoader {
-        -recipe_directory: str
-        -cache: dict
-        +load_recipe(name: str) MonitorRecipe
-        +list_available_recipes() List[str]
-        +validate_recipe(recipe: MonitorRecipe) List[str]
-        +reload_recipes() bool
-    }
+# List monitors
+ubenchai monitor list
 
-    %% Prometheus Integration
-    class PrometheusClient {
-        -base_url: str
-        -orchestrator: Orchestrator
-        +deploy_prometheus(targets: List[str], config: dict) str
-        +stop_prometheus(instance_id: str) bool
-        +query(instance_id: str, promql: str) QueryResult
-        +query_range(instance_id: str, promql: str, start: datetime, end: datetime) QueryResult
-        +health_check(instance_id: str) bool
-        +export_metrics_to_file(instance_id: str, query: str, filepath: str) bool
-    }
+```
 
-    %% Grafana Integration
-    class GrafanaClient {
-        -base_url: str
-        -orchestrator: Orchestrator
-        +deploy_grafana(prometheus_url: str, config: dict) str
-        +stop_grafana(instance_id: str) bool
-        +create_dashboard(instance_id: str, title: str, prometheus_url: str) str
-        +health_check(instance_id: str) bool
-    }
+**Example:**
+```bash
+poetry run ubenchai monitor start --recipe vllm-monitor --targets 12345678
+```
 
-    %% Reporting System
-    class ReportManager {
-        +generate_report(monitor_id: str, prometheus_client: PrometheusClient) Report
-        +save_report(report: Report, filepath: str) bool
-    }
+**See the [Complete Monitoring Workflow](#complete-monitoring-workflow) section below for a detailed step-by-step guide.**
 
-    class Report {
-        -report_id: str
-        -monitor_id: str
-        -timestamp: datetime
-        -metrics_data: str
-        -summary: str
-        +generate_html() str
-        +generate_json() str
-    }
+## Complete Monitoring Workflow
 
-    %% Data Models
-    class QueryResult {
-        -query: str
-        -timestamp: datetime
-        -data: List[MetricSample]
-        +to_json() str
-        +to_dict() dict
-    }
+This section provides a complete step-by-step guide for deploying a service (vLLM) and monitoring it with Prometheus and Grafana.
 
-    class MetricSample {
-        -metric_name: str
-        -labels: Dict[str, str]
-        -value: float
-        -timestamp: datetime
-    }
+### Step 1: Start the vLLM Service
 
-    class MonitorStatus {
-        <<enumeration>>
-        STARTING
-        RUNNING
-        STOPPING
-        STOPPED
-        ERROR
-    }
+First, deploy the vLLM inference service on MeluXina:
 
-    %% Relationships
-    MonitorManager --> RecipeLoader
-    MonitorManager --> MonitorInstance
-    MonitorManager --> PrometheusClient
-    MonitorManager --> GrafanaClient
-    MonitorManager --> ReportManager
-    
-    RecipeLoader --> MonitorRecipe
-    
-    MonitorInstance --> MonitorRecipe
-    MonitorInstance --> MonitorStatus
-    
-    PrometheusClient --> QueryResult
-    QueryResult --> MetricSample
-    
-    ReportManager --> Report
+```bash
+poetry run ubenchai server start --recipe vllm
+```
+
+**Expected Output:**
+```
+✓ Service started successfully!
+   Service ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+   Recipe: vllm-singlenode
+   Status: running
+   Orchestrator Handle: 12345678
+```
+
+**Important:** Note the **Orchestrator Handle** (SLURM job ID) - you'll need this for monitoring. In this example, it's `12345678`.
+
+You can also find running jobs with:
+```bash
+squeue --me
+```
+
+### Step 2: Start the Monitoring Stack
+
+Start Prometheus and Grafana to monitor your vLLM service using the job ID from Step 1:
+
+```bash
+poetry run ubenchai monitor start --recipe vllm-monitor --targets 12345678
+```
+
+**Expected Output:**
+```
+✓ Monitoring stack started!
+   Monitor ID: m9n8o7p6-q5r4-3210-stuv-wx9876543210
+   Recipe: vllm-monitor
+
+   Prometheus: http://mel2091:9090
+   Grafana: http://mel2091:3000 (admin/admin)
+```
+
+**Note:** The node names (e.g., `mel2091`) will vary depending on which compute nodes your jobs are assigned to.
+
+### Step 3: Access Monitoring via SSH Port Forwarding
+
+Since the monitoring services run on MeluXina compute nodes (not accessible directly from the internet), you need to set up SSH port forwarding.
+
+#### Option A: Forward Both Services (Recommended)
+
+**On your local machine**, open a terminal and run:
+
+```bash
+ssh -L 9090:mel2091:9090 -L 3000:mel2091:3000 <your-username>@login.lxp.lu
+```
+
+Replace:
+- `mel2091` with the actual compute node from your monitor output
+- `<your-username>` with your MeluXina username
+
+#### Option B: Forward Services Separately
+
+If you prefer separate tunnels:
+
+**Prometheus tunnel:**
+```bash
+ssh -L 9090:mel2091:9090 <your-username>@login.lxp.lu
+```
+
+**Grafana tunnel (in a second terminal):**
+```bash
+ssh -L 3000:mel2091:3000 <your-username>@login.lxp.lu
+```
+
+### Step 4: Access the Web Interfaces
+
+With the SSH tunnels active, open your web browser:
+
+**Prometheus:**
+- URL: http://localhost:9090
+- Check targets: http://localhost:9090/targets
+- Query interface: http://localhost:9090/graph
+
+**Grafana:**
+- URL: http://localhost:3000
+- Username: `admin`
+- Password: `admin` (change on first login)
+
+### Step 5: Explore Metrics in Prometheus
+
+Once Prometheus is accessible:
+
+1. Go to http://localhost:9090/targets
+2. Verify your vLLM service appears as a target with status "UP"
+3. Navigate to the Graph tab: http://localhost:9090/graph
+4. Try some example queries:
+   ```
+   # Request rate
+   rate(vllm:request_success_total[5m])
+   
+   # GPU cache usage
+   vllm:gpu_cache_usage_perc
+   
+   # Request latency (p95)
+   histogram_quantile(0.95, rate(vllm:e2e_request_latency_seconds_bucket[5m]))
+   ```
+
+### Step 6: View Grafana Dashboard
+
+The monitoring stack automatically provisions a vLLM dashboard:
+
+1. Go to http://localhost:3000
+2. Login with `admin` / `admin`
+3. Navigate to **Dashboards** → **Browse**
+4. Open the **vLLM Metrics** dashboard
+
+The dashboard includes panels for:
+- Request Rate
+- GPU Cache Usage  
+- Request Latency (p50, p95)
+- Running Requests
+
+### Step 7: Customize Grafana Dashboards
+
+#### Add a New Panel
+
+1. Open the vLLM dashboard
+2. Click the **Add** button → **Visualization**
+3. In the query editor, enter a PromQL query:
+   ```
+   vllm:num_requests_waiting
+   ```
+4. Configure visualization settings:
+   - **Panel title:** "Waiting Requests"
+   - **Visualization type:** Time series or Stat
+   - **Unit:** Short (for counts)
+5. Click **Apply** to save
+
+#### Edit Existing Panels
+
+1. Hover over any panel
+2. Click the dropdown menu (⋮) → **Edit**
+3. Modify the query, visualization type, or display options
+4. Click **Apply** to save changes
+
+#### Save Dashboard Changes
+
+After making modifications:
+1. Click the **Save dashboard** icon (💾) at the top
+2. Add a description of changes
+3. Click **Save**
+
+#### Create a New Dashboard
+
+1. Click **+** → **Dashboard**
+2. Click **Add visualization**
+3. Select **Prometheus** as the data source
+4. Build your custom panels with PromQL queries
+5. Save the dashboard
+
+**Example Custom Queries:**
+```promql
+# Tokens per second
+rate(vllm:prompt_tokens_total[5m]) + rate(vllm:generation_tokens_total[5m])
+
+# Cache hit rate
+vllm:cache_hit_total / (vllm:cache_hit_total + vllm:cache_miss_total)
+
+# Average batch size
+avg_over_time(vllm:avg_prompt_throughput_toks_per_s[5m])
+```
+
+### Step 8: Stop Monitoring When Done
+
+To stop the monitoring stack:
+
+```bash
+# List running monitors to get the monitor ID
+poetry run ubenchai monitor list
+
+# Stop the monitor (use ID from list output)
+poetry run ubenchai monitor stop m9n8o7p6
+```
+
+To stop the vLLM service:
+
+```bash
+# Stop by service ID
+poetry run ubenchai server stop a1b2c3d4
+
+# Or stop by SLURM job ID
+poetry run ubenchai server stop 12345678
 ```
 
 #### Core Components  
@@ -853,8 +933,6 @@ classDiagram
 - **Apptainer/Singularity:** Container runtime optimized for HPC environments
 - **Pyslurm**: Python bindings for SLURM API 
 - **kubernetes**: Official Kubernetes Python client (optional?)
-
-## Task Assignment Strategy
 
 ### **Dennys Huber** - Server Module Lead
 **Primary Responsibilities:**
