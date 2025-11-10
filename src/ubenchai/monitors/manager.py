@@ -162,7 +162,9 @@ class MonitorManager:
                 try:
                     self.orchestrator.stop_component(grafana_job_id)
                     if recipe.prometheus.enabled:
-                        self.orchestrator.stop_component(instance.components["prometheus"].job_id)
+                        self.orchestrator.stop_component(
+                            instance.components["prometheus"].job_id
+                        )
                 except Exception as e:
                     logger.warning(f"Failed to stop components: {e}")
                 raise RuntimeError("Grafana failed to start or timeout reached")
