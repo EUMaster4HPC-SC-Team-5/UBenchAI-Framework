@@ -2,7 +2,7 @@
 # Uses tensor parallelism across multiple GPUs/nodes for large models
 # Example: Llama-2-70B or Mixtral-8x7B across 4 GPUs
 
-name: vllm-multinode
+name: vllm-singlenode
 description: vLLM multi-node inference with tensor parallelism for large models
 image: docker://vllm/vllm-openai:v0.6.3.post1
 
