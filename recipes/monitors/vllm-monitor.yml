@@ -1,0 +1,32 @@
+name: vllm-monitor
+description: Complete monitoring stack for vLLM service
+
+targets:
+  - name: vllm-llm
+    port: 8000
+    metrics_path: /metrics
+
+prometheus:
+  enabled: true
+  image: docker://prom/prometheus:latest
+  scrape_interval: 15s
+  retention_time: 24h
+  port: 9090
+  partition: cpu
+  resources:
+    cpu_cores: 2
+    memory_gb: 4
+    gpu_count: 0
+
+grafana:
+  enabled: true
+  image: docker://grafana/grafana:latest
+  port: 3000
+  partition: cpu
+  admin_password: admin
+  dashboards:
+    - vllm-metrics
+  resources:
+    cpu_cores: 2
+    memory_gb: 4
+    gpu_count: 0
