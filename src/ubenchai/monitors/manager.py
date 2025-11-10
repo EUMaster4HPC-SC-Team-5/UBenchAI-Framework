@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from pathlib import Path
 import subprocess
 import shutil
+import time
 from loguru import logger
 
 from ubenchai.monitors.recipes import MonitorRecipe, TargetService
@@ -113,12 +114,22 @@ class MonitorManager:
                 data_dir=prom_data_dir,
             )
 
-            # Get node for Prometheus
-            prom_node = self._get_job_node(prom_job_id)
-            prom_url = f"http://{prom_node}:{recipe.prometheus.port}"
+            # Wait for Prometheus to be running and get its node
+            logger.info("Waiting for Prometheus to be running...")
+            prom_node = self._wait_for_job_node(prom_job_id, timeout_seconds=120)
 
+            if not prom_node:
+                logger.error("Prometheus failed to start or timeout reached")
+                # Clean up the failed job
+                try:
+                    self.orchestrator.stop_component(prom_job_id)
+                except Exception as e:
+                    logger.warning(f"Failed to stop Prometheus job: {e}")
+                raise RuntimeError("Prometheus failed to start or timeout reached")
+
+            prom_url = f"http://{prom_node}:{recipe.prometheus.port}"
             instance.add_component("prometheus", prom_job_id, prom_url)
-            logger.info(f"Prometheus deployed: {prom_url}")
+            logger.info(f"Prometheus deployed and running: {prom_url}")
 
         # Copy dashboard files to Grafana
         if recipe.grafana.enabled and recipe.grafana.dashboards:
@@ -129,10 +140,9 @@ class MonitorManager:
         if recipe.grafana.enabled:
             logger.info("Deploying Grafana...")
 
-            # Wait a bit for Prometheus to start
-            import time
-
-            time.sleep(5)
+            # Wait a bit more for Prometheus to fully initialize
+            logger.info("Waiting for Prometheus to fully initialize...")
+            time.sleep(10)
 
             grafana_job_id = self.orchestrator.deploy_grafana(
                 config=recipe.grafana,
@@ -142,12 +152,24 @@ class MonitorManager:
                 dashboards_dir=grafana_dashboards_dir,
             )
 
-            # Get node for Grafana
-            grafana_node = self._get_job_node(grafana_job_id)
-            grafana_url = f"http://{grafana_node}:{recipe.grafana.port}"
+            # Wait for Grafana to be running and get its node
+            logger.info("Waiting for Grafana to be running...")
+            grafana_node = self._wait_for_job_node(grafana_job_id, timeout_seconds=120)
 
+            if not grafana_node:
+                logger.error("Grafana failed to start or timeout reached")
+                # Clean up both jobs
+                try:
+                    self.orchestrator.stop_component(grafana_job_id)
+                    if recipe.prometheus.enabled:
+                        self.orchestrator.stop_component(instance.components["prometheus"].job_id)
+                except Exception as e:
+                    logger.warning(f"Failed to stop components: {e}")
+                raise RuntimeError("Grafana failed to start or timeout reached")
+
+            grafana_url = f"http://{grafana_node}:{recipe.grafana.port}"
             instance.add_component("grafana", grafana_job_id, grafana_url)
-            logger.info(f"Grafana deployed: {grafana_url}")
+            logger.info(f"Grafana deployed and running: {grafana_url}")
 
         # Register instance
         if not self.monitor_registry.register(instance):
@@ -263,17 +285,20 @@ class MonitorManager:
             # If job_id provided, use it
             if job_ids and len(job_ids) > 0:
                 job_id = job_ids[0]
-                node = self._get_job_node(job_id)
+                # Wait for the target job to be running
+                node = self._wait_for_job_node(job_id, timeout_seconds=60)
                 if node:
                     targets[spec.name] = f"{node}:{spec.port}"
                     logger.info(f"Resolved {spec.name} -> {node}:{spec.port}")
+                else:
+                    logger.warning(f"Could not resolve node for job {job_id}")
             # If endpoint directly specified
             elif spec.endpoint:
                 targets[spec.name] = spec.endpoint
                 logger.info(f"Using direct endpoint for {spec.name}: {spec.endpoint}")
             # Try to find by service name
             elif spec.job_id:
-                node = self._get_job_node(spec.job_id)
+                node = self._wait_for_job_node(spec.job_id, timeout_seconds=60)
                 if node:
                     targets[spec.name] = f"{node}:{spec.port}"
                     logger.info(f"Resolved {spec.name} -> {node}:{spec.port}")
@@ -281,7 +306,7 @@ class MonitorManager:
         return targets
 
     def _get_job_node(self, job_id: str) -> Optional[str]:
-        """Get the node where a SLURM job is running"""
+        """Get the node where a SLURM job is running (immediate check, no waiting)"""
         try:
             result = subprocess.run(
                 ["squeue", "-j", job_id, "--format=%N", "--noheader"],
@@ -296,6 +321,72 @@ class MonitorManager:
         except subprocess.CalledProcessError:
             logger.warning(f"Could not find node for job: {job_id}")
             return None
+
+    def _wait_for_job_node(
+        self, job_id: str, timeout_seconds: int = 120
+    ) -> Optional[str]:
+        """
+        Wait for a SLURM job to be running and return its node
+
+        Args:
+            job_id: SLURM job ID
+            timeout_seconds: Maximum time to wait (default: 120 seconds)
+
+        Returns:
+            Node hostname if job is running, None if timeout or job failed
+        """
+        start_time = time.time()
+        last_status = None
+
+        logger.info(
+            f"Waiting for job {job_id} to be running (timeout: {timeout_seconds}s)..."
+        )
+
+        while (time.time() - start_time) < timeout_seconds:
+            try:
+                result = subprocess.run(
+                    ["squeue", "-j", job_id, "--format=%T|%N", "--noheader"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+
+                output = result.stdout.strip()
+                if not output:
+                    logger.warning(f"Job {job_id} not found in queue")
+                    return None
+
+                parts = output.split("|")
+                if len(parts) >= 2:
+                    status, node = parts[0].strip(), parts[1].strip()
+
+                    # Log status changes
+                    if status != last_status:
+                        logger.info(f"Job {job_id} status: {status}")
+                        last_status = status
+
+                    if status == "RUNNING" and node:
+                        elapsed = time.time() - start_time
+                        logger.info(
+                            f"✓ Job {job_id} is running on node {node} (took {elapsed:.1f}s)"
+                        )
+                        return node
+                    elif status == "PENDING":
+                        logger.debug(f"Job {job_id} is pending, waiting...")
+                    elif status in ["FAILED", "CANCELLED", "TIMEOUT", "NODE_FAIL"]:
+                        logger.error(f"✗ Job {job_id} failed with status {status}")
+                        return None
+
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Error checking job {job_id}: {e}")
+
+            time.sleep(5)  # Wait 5 seconds before next check
+
+        elapsed = time.time() - start_time
+        logger.error(
+            f"✗ Timeout waiting for job {job_id} to start (waited {elapsed:.1f}s)"
+        )
+        return None
 
     def _cleanup_instance(self, instance: MonitorInstance) -> None:
         """Cleanup a failed instance"""
