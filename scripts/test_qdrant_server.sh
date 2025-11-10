@@ -1,8 +1,8 @@
 #!/bin/bash -l
 #SBATCH --job-name=test-qdrant
-#SBATCH --time=00:15:00
+#SBATCH --time=01:00:00
 #SBATCH --qos=default
-#SBATCH --partition=gpu
+#SBATCH --partition=cpu
 #SBATCH --account=p200981
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
