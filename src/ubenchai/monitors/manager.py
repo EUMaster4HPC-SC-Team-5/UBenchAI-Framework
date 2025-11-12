@@ -1,484 +1,399 @@
 """
-MonitorManager - central component to start/stop and manage monitoring runs.
-Implements local collection, file export, and stubs for Prometheus/Grafana/SLURM.
+MonitorManager - Central orchestration for monitoring stacks
 """
 
-from __future__ import annotations
-
-import json
-import time
-import uuid
-from datetime import datetime
-import os
-from pathlib import Path
 from typing import Dict, List, Optional
-
+from pathlib import Path
+import subprocess
+import shutil
+import time
 from loguru import logger
-import yaml
 
-try:
-    import psutil  # type: ignore
-except Exception:  # pragma: no cover
-    psutil = None  # Fallback if not installed; local collector will error politely
-
-from .models import MonitorInstance, MonitorRecipe, MonitorStatus
-from .recipe_loader import MonitorRecipeLoader
+from ubenchai.monitors.recipes import MonitorRecipe, TargetService
+from ubenchai.monitors.instances import MonitorInstance, MonitorRegistry, MonitorStatus
+from ubenchai.monitors.orchestrator import MonitorOrchestrator
+from ubenchai.monitors.recipe_loader import MonitorRecipeLoader
 
 
 class MonitorManager:
-    def __init__(self, recipe_directory: str = "recipes", output_root: str = "logs"):
+    """
+    Central orchestration for monitoring stacks
+    Similar to ServerManager but for monitoring components
+    """
+
+    def __init__(
+        self,
+        recipe_directory: str = "recipes/monitors",
+        output_root: str = "logs/monitors",
+        dashboards_directory: str = "dashboards",
+    ):
+        """
+        Initialize MonitorManager
+
+        Args:
+            recipe_directory: Directory containing monitor recipes
+            output_root: Root directory for monitor outputs
+            dashboards_directory: Directory containing dashboard JSON files
+        """
+        logger.info("Initializing MonitorManager")
+
+        # Initialize components
         self.recipe_loader = MonitorRecipeLoader(recipe_directory=recipe_directory)
+        self.monitor_registry = MonitorRegistry()
+        self.orchestrator = MonitorOrchestrator(log_directory=f"{output_root}/slurm")
+
         self.output_root = Path(output_root)
         self.output_root.mkdir(parents=True, exist_ok=True)
-        self._instances: Dict[str, MonitorInstance] = {}
-        logger.info("MonitorManager initialized")
-        self._load_existing_instances()
 
-    def list_available_recipes(self) -> List[str]:
-        return self.recipe_loader.list_available_recipes()
+        self.dashboards_directory = Path(dashboards_directory)
 
-    def list_running_monitors(self) -> List[Dict]:
-        return [m.to_dict() for m in self._instances.values()]
+        logger.info("MonitorManager initialization complete")
 
     def start_monitor(
         self,
         recipe_name: str,
-        targets: Optional[List[str]] = None,
-        metadata: Optional[Dict] = None,
-        mode: str = "local",
+        target_job_ids: Optional[List[str]] = None,
     ) -> MonitorInstance:
-        recipe = self.recipe_loader.load_recipe(recipe_name)
-        monitor_id = str(uuid.uuid4())
-        created_at_iso = datetime.utcnow().isoformat() + "Z"
-        instance = MonitorInstance(
-            id=monitor_id,
-            recipe=recipe,
-            status=MonitorStatus.STARTING,
-            created_at_iso=created_at_iso,
-            targets=targets or recipe.target_services,
-            metadata=metadata or {},
-        )
-        self._instances[monitor_id] = instance
-        logger.info(f"Monitor started: {monitor_id} ({recipe.name}) - mode={mode}")
-        self._persist_instance(instance)
+        """
+        Start a monitoring stack from a recipe
 
-        # Deploy Prometheus if requested via exporters
+        Args:
+            recipe_name: Name of the monitor recipe
+            target_job_ids: Optional list of SLURM job IDs to monitor
+
+        Returns:
+            MonitorInstance for the started monitoring stack
+        """
+        logger.info(f"Starting monitor from recipe: {recipe_name}")
+
+        # Load recipe
         try:
-            if any(
-                (e.get("type") or "").lower() == "prometheus"
-                for e in instance.recipe.exporters
-            ):
-                self.deploy_prometheus(instance)
-        except Exception as exc:
-            logger.warning(f"Prometheus deployment failed: {exc}")
+            recipe = self.recipe_loader.load_recipe(recipe_name)
+        except FileNotFoundError:
+            logger.error(f"Recipe not found: {recipe_name}")
+            raise
+        except ValueError as e:
+            logger.error(f"Recipe validation failed: {e}")
+            raise
 
-        # Optional Grafana provisioning (binds Prometheus if available)
-        try:
-            if (instance.recipe.grafana or {}).get("enabled", False):
-                self.deploy_grafana(instance)
-        except Exception as exc:
-            logger.warning(f"Grafana provisioning failed: {exc}")
+        # Resolve target endpoints
+        targets = self._resolve_targets(recipe.targets, target_job_ids)
 
-        if mode == "local":
-            # For now, run a synchronous local collection once and export to file
-            try:
-                self._run_local_collection_once(instance)
-                instance.status = MonitorStatus.RUNNING
-            except Exception as exc:
-                instance.status = MonitorStatus.ERROR
-                logger.exception(f"Local collection failed for {monitor_id}: {exc}")
-        elif mode == "slurm":
-            # Submit a real SLURM job (best-effort)
-            self.submit_slurm_job(instance)
-            instance.status = MonitorStatus.RUNNING
-        else:
-            instance.status = MonitorStatus.ERROR
-            logger.error(f"Unknown monitor mode: {mode}")
-        self._persist_instance(instance)
+        if not targets:
+            raise RuntimeError("No valid targets found to monitor")
+
+        logger.info(f"Resolved targets: {targets}")
+
+        # Create monitor instance
+        instance = MonitorInstance(recipe=recipe)
+
+        # Setup directories
+        instance_dir = self.output_root / instance.id
+        prom_config_dir = instance_dir / "prometheus" / "config"
+        prom_data_dir = instance_dir / "prometheus" / "data"
+        grafana_prov_dir = instance_dir / "grafana" / "provisioning"
+        grafana_data_dir = instance_dir / "grafana" / "data"
+        grafana_dashboards_dir = instance_dir / "grafana" / "dashboards"
+
+        for dir_path in [
+            prom_config_dir,
+            prom_data_dir,
+            grafana_prov_dir,
+            grafana_data_dir,
+            grafana_dashboards_dir,
+        ]:
+            dir_path.mkdir(parents=True, exist_ok=True)
+
+        # Deploy Prometheus
+        if recipe.prometheus.enabled:
+            logger.info("Deploying Prometheus...")
+            prom_job_id = self.orchestrator.deploy_prometheus(
+                config=recipe.prometheus,
+                targets=targets,
+                config_dir=prom_config_dir,
+                data_dir=prom_data_dir,
+            )
+
+            # Wait for Prometheus to be running and get its node
+            logger.info("Waiting for Prometheus to be running...")
+            prom_node = self._wait_for_job_node(prom_job_id, timeout_seconds=120)
+
+            if not prom_node:
+                logger.error("Prometheus failed to start or timeout reached")
+                # Clean up the failed job
+                try:
+                    self.orchestrator.stop_component(prom_job_id)
+                except Exception as e:
+                    logger.warning(f"Failed to stop Prometheus job: {e}")
+                raise RuntimeError("Prometheus failed to start or timeout reached")
+
+            prom_url = f"http://{prom_node}:{recipe.prometheus.port}"
+            instance.add_component("prometheus", prom_job_id, prom_url)
+            logger.info(f"Prometheus deployed and running: {prom_url}")
+
+        # Copy dashboard files to Grafana
+        if recipe.grafana.enabled and recipe.grafana.dashboards:
+            logger.info("Copying dashboard files...")
+            self._copy_dashboards(recipe.grafana.dashboards, grafana_dashboards_dir)
+
+        # Deploy Grafana
+        if recipe.grafana.enabled:
+            logger.info("Deploying Grafana...")
+
+            # Wait a bit more for Prometheus to fully initialize
+            logger.info("Waiting for Prometheus to fully initialize...")
+            time.sleep(10)
+
+            grafana_job_id = self.orchestrator.deploy_grafana(
+                config=recipe.grafana,
+                prometheus_url=instance.prometheus_url,
+                provisioning_dir=grafana_prov_dir,
+                data_dir=grafana_data_dir,
+                dashboards_dir=grafana_dashboards_dir,
+            )
+
+            # Wait for Grafana to be running and get its node
+            logger.info("Waiting for Grafana to be running...")
+            grafana_node = self._wait_for_job_node(grafana_job_id, timeout_seconds=120)
+
+            if not grafana_node:
+                logger.error("Grafana failed to start or timeout reached")
+                # Clean up both jobs
+                try:
+                    self.orchestrator.stop_component(grafana_job_id)
+                    if recipe.prometheus.enabled:
+                        self.orchestrator.stop_component(
+                            instance.components["prometheus"].job_id
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to stop components: {e}")
+                raise RuntimeError("Grafana failed to start or timeout reached")
+
+            grafana_url = f"http://{grafana_node}:{recipe.grafana.port}"
+            instance.add_component("grafana", grafana_job_id, grafana_url)
+            logger.info(f"Grafana deployed and running: {grafana_url}")
+
+        # Register instance
+        if not self.monitor_registry.register(instance):
+            logger.error(f"Failed to register monitor: {instance.id}")
+            # Cleanup
+            self._cleanup_instance(instance)
+            raise RuntimeError("Monitor registration failed")
+
+        # Update status
+        instance.update_status(MonitorStatus.RUNNING)
+
+        logger.info(f"Monitor started successfully: {instance.id}")
         return instance
 
-    def stop_monitor(self, monitor_id: str) -> bool:
-        inst = self._instances.get(monitor_id)
-        if not inst:
-            inst = self._load_instance_from_disk(monitor_id)
-            if not inst:
-                return False
-
-        # Attempt to tear down SLURM job if recorded
-        job_id = (inst.metadata or {}).get("slurm_job_id")
-        if job_id:
-            try:
-                import subprocess
-
-                subprocess.run(
-                    ["scancel", str(job_id)],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                logger.info(f"Cancelled SLURM job {job_id} for monitor {monitor_id}")
-            except Exception as exc:
-                logger.warning(f"Failed to cancel SLURM job {job_id}: {exc}")
-
-        inst.status = MonitorStatus.STOPPED
-        logger.info(f"Monitor stopped: {monitor_id}")
-        self._persist_instance(inst)
-        return True
-
-    def export_metrics(self, monitor_id: str, output: Optional[str] = None) -> Path:
-        inst = self._instances.get(monitor_id)
-        if not inst:
-            inst = self._load_instance_from_disk(monitor_id)
-        if not inst:
-            raise ValueError(f"Monitor not found: {monitor_id}")
-        # Export last captured metrics if present; else re-collect once
-        return self._run_local_collection_once(inst, output_override=output)
-
-    # ----- Local collection -----
-    def _run_local_collection_once(
-        self, instance: MonitorInstance, output_override: Optional[str] = None
-    ) -> Path:
-        if psutil is None:
-            raise RuntimeError("psutil not installed; cannot run local monitor")
-
-        interval = max(1, int(instance.recipe.collection_interval_seconds))
-        snapshot = {
-            "monitor_id": instance.id,
-            "taken_at": datetime.utcnow().isoformat() + "Z",
-            "cpu_percent": psutil.cpu_percent(interval=0.1),
-            "memory": dict(psutil.virtual_memory()._asdict()),
-            "disk": dict(psutil.disk_usage("/")._asdict()),
-            "net_io": dict(psutil.net_io_counters()._asdict()),
-            "pids": len(psutil.pids()),
-            "targets": list(instance.targets),
-        }
-
-        out_dir = self.output_root / "monitors" / instance.id
-        out_dir.mkdir(parents=True, exist_ok=True)
-        output_path = (
-            Path(output_override) if output_override else out_dir / "metrics.json"
-        )
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(snapshot, f, indent=2)
-        logger.info(f"Wrote monitor metrics: {output_path}")
-        time.sleep(interval)
-        return output_path
-
-    # ----- Prometheus deployment -----
-    def deploy_prometheus(self, instance: MonitorInstance) -> None:
-        out_dir = self.output_root / "monitors" / instance.id
-        prom_dir = out_dir / "prometheus"
-        prom_dir.mkdir(parents=True, exist_ok=True)
-
-        # Build scrape targets (host:port pairs)
-        targets = []
-        for t in instance.targets:
-            # Accept raw host or host:port; default to 9090/9100 based on hint
-            if ":" in t:
-                targets.append(t)
-            else:
-                targets.append(f"{t}:9100")  # default to node_exporter
-
-        config = {
-            "global": {
-                "scrape_interval": f"{max(1, int(instance.recipe.collection_interval_seconds))}s"
-            },
-            "scrape_configs": [
-                {
-                    "job_name": instance.recipe.name,
-                    "static_configs": [{"targets": targets}] if targets else [],
-                }
-            ],
-        }
-
-        config_path = prom_dir / "prometheus.yml"
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(config, f, sort_keys=False)
-
-        # Try to start a local Prometheus if available
-        prometheus_bin = self._which(["prometheus"])
-        if prometheus_bin:
-            data_dir = prom_dir / "data"
-            data_dir.mkdir(exist_ok=True)
-            log_path = prom_dir / "prometheus.log"
-            try:
-                import subprocess
-
-                cmd = [
-                    prometheus_bin,
-                    f"--config.file={config_path}",
-                    f"--storage.tsdb.path={data_dir}",
-                    "--web.listen-address=0.0.0.0:9090",
-                ]
-                subprocess.Popen(
-                    cmd,
-                    stdout=open(log_path, "a"),
-                    stderr=subprocess.STDOUT,
-                )
-                instance.prometheus_url = "http://localhost:9090"
-                logger.info("Started local Prometheus on http://localhost:9090")
-            except Exception as exc:
-                logger.warning(f"Failed to start Prometheus automatically: {exc}")
-        else:
-            logger.info("Prometheus binary not found on PATH; wrote config only")
-            # Provide a conventional URL for external Prometheus
-            instance.prometheus_url = instance.prometheus_url or "http://localhost:9090"
-
-        self._persist_instance(instance)
-
-    # ----- Grafana provisioning -----
-    def deploy_grafana(self, instance: MonitorInstance) -> None:
-        out_dir = self.output_root / "monitors" / instance.id / "grafana"
-        prov_dir = out_dir / "provisioning"
-        ds_dir = prov_dir / "datasources"
-        db_dir = prov_dir / "dashboards"
-        dashboards_dir = out_dir / "dashboards"
-        ds_dir.mkdir(parents=True, exist_ok=True)
-        db_dir.mkdir(parents=True, exist_ok=True)
-        dashboards_dir.mkdir(parents=True, exist_ok=True)
-
-        # Data source binding to Prometheus
-        prometheus_url = instance.prometheus_url or "http://localhost:9090"
-        datasource_yaml = {
-            "apiVersion": 1,
-            "datasources": [
-                {
-                    "name": "UBenchAI Prometheus",
-                    "type": "prometheus",
-                    "access": "proxy",
-                    "url": prometheus_url,
-                    "isDefault": True,
-                }
-            ],
-        }
-        with open(ds_dir / "datasource.yml", "w", encoding="utf-8") as f:
-            yaml.safe_dump(datasource_yaml, f, sort_keys=False)
-
-        # Generate a simple dashboard
-        dashboard_path = dashboards_dir / "ubenchai-overview.json"
-        dashboard = {
-            "annotations": {"list": []},
-            "panels": [
-                {
-                    "type": "timeseries",
-                    "title": "Node CPU Utilization",
-                    "targets": [
-                        {
-                            "expr": '100 - (avg by(instance)(irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
-                        }
-                    ],
-                    "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
-                },
-            ],
-            "title": f"UBenchAI - {instance.recipe.name}",
-            "schemaVersion": 38,
-            "version": 1,
-        }
-        with open(dashboard_path, "w", encoding="utf-8") as f:
-            json.dump(dashboard, f, indent=2)
-
-        dashboards_prov = {
-            "apiVersion": 1,
-            "providers": [
-                {
-                    "name": "ubenchai-dashboards",
-                    "orgId": 1,
-                    "folder": "UBenchAI",
-                    "type": "file",
-                    "disableDeletion": False,
-                    "options": {"path": str(dashboards_dir)},
-                }
-            ],
-        }
-        with open(db_dir / "dashboards.yml", "w", encoding="utf-8") as f:
-            yaml.safe_dump(dashboards_prov, f, sort_keys=False)
-
-        # Try to start Grafana if available
-        grafana_bin = self._which(
-            ["grafana-server", "grafana-server.exe"]
-        )  # Windows-friendly
-        if grafana_bin:
-            try:
-                import subprocess
-
-                log_path = out_dir / "grafana.log"
-                http_port = (instance.recipe.grafana or {}).get("port", 3000)
-                env = {
-                    **os.environ,
-                    "GF_PATHS_PROVISIONING": str(prov_dir),
-                    "GF_SERVER_HTTP_PORT": str(http_port),
-                }
-                subprocess.Popen(
-                    [grafana_bin, f"--homepath={out_dir}"],
-                    env=env,
-                    stdout=open(log_path, "a"),
-                    stderr=subprocess.STDOUT,
-                )
-                instance.grafana_url = f"http://localhost:{http_port}"
-                logger.info(f"Started local Grafana on {instance.grafana_url}")
-            except Exception as exc:
-                logger.warning(f"Failed to start Grafana automatically: {exc}")
-                instance.grafana_url = instance.grafana_url or "http://localhost:3000"
-        else:
-            logger.info("grafana-server not found; wrote provisioning files only")
-            instance.grafana_url = instance.grafana_url or "http://localhost:3000"
-
-        self._persist_instance(instance)
-
-    # ----- SLURM job submission (monitor context) -----
-    def submit_slurm_job(self, instance: MonitorInstance) -> None:
-        """Submit a lightweight SLURM job to validate lifecycle management.
-
-        Tries to run node_exporter if available on the cluster; otherwise runs a short sleep.
-        Records job id in instance.metadata['slurm_job_id'].
+    def _copy_dashboards(
+        self,
+        dashboard_names: List[str],
+        target_dir: Path,
+    ) -> None:
         """
-        try:
-            import subprocess, tempfile
-        except Exception as exc:  # pragma: no cover
-            raise RuntimeError(f"System missing subprocess/tempfile: {exc}")
+        Copy dashboard JSON files to Grafana dashboards directory
 
-        # Check if SLURM is available first
-        try:
-            subprocess.run(
-                ["sbatch", "--version"], capture_output=True, text=True, check=True
-            )
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.warning(
-                "SLURM not available on this system - skipping SLURM job submission"
-            )
-            logger.info("Monitor will run in local mode instead")
-            # Fall back to local collection
-            try:
-                self._run_local_collection_once(instance)
-                instance.metadata["slurm_fallback"] = "local_collection"
-                logger.info("Completed local collection as SLURM fallback")
-            except Exception as exc:
-                logger.warning(f"Local collection fallback also failed: {exc}")
-            return
+        Args:
+            dashboard_names: List of dashboard names (e.g., ["vllm-metrics"])
+            target_dir: Target directory for dashboard files
+        """
+        for dashboard_name in dashboard_names:
+            source_file = self.dashboards_directory / f"{dashboard_name}.json"
 
-        # Compose a minimal sbatch script
-        script_lines = [
-            "#!/bin/bash",
-            f"#SBATCH --job-name=mon-{instance.recipe.name}",
-            "#SBATCH --time=00:10:00",
-            "#SBATCH --output=/tmp/ubenchai_mon_%j.out",
-            "#SBATCH --error=/tmp/ubenchai_mon_%j.err",
-            "\n",
-            "if command -v node_exporter >/dev/null 2>&1; then",
-            "  node_exporter &",
-            "  PID=$!",
-            '  echo "node_exporter started with PID $PID"',
-            "  sleep 300",
-            "  kill $PID",
-            "else",
-            "  echo 'node_exporter not found; sleeping as placeholder'",
-            "  sleep 60",
-            "fi",
-        ]
+            if not source_file.exists():
+                logger.warning(f"Dashboard file not found: {source_file}")
+                continue
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
-            f.write("\n".join(script_lines))
-            script_path = f.name
+            target_file = target_dir / f"{dashboard_name}.json"
+            shutil.copy2(source_file, target_file)
+            logger.info(f"Copied dashboard: {source_file} -> {target_file}")
 
+    def stop_monitor(self, monitor_id: str) -> bool:
+        """Stop a running monitor"""
+        logger.info(f"Stopping monitor: {monitor_id}")
+
+        instance = self.monitor_registry.get(monitor_id)
+        if not instance:
+            logger.error(f"Monitor not found: {monitor_id}")
+            return False
+
+        instance.update_status(MonitorStatus.STOPPING)
+
+        # Stop all components
+        success = True
+        for name, component in instance.components.items():
+            logger.info(f"Stopping component: {name} ({component.job_id})")
+            if not self.orchestrator.stop_component(component.job_id):
+                logger.error(f"Failed to stop component: {name}")
+                success = False
+
+        if success:
+            instance.update_status(MonitorStatus.STOPPED)
+            self.monitor_registry.unregister(monitor_id)
+            logger.info(f"Monitor stopped successfully: {monitor_id}")
+        else:
+            instance.update_status(MonitorStatus.ERROR)
+            logger.error(f"Failed to stop all components for monitor: {monitor_id}")
+
+        return success
+
+    def list_available_monitors(self) -> List[str]:
+        """List available monitor recipes"""
+        logger.info("Listing available monitor recipes")
+        recipes = self.recipe_loader.list_available_recipes()
+        logger.debug(f"Found {len(recipes)} available recipes")
+        return recipes
+
+    def list_running_monitors(self) -> List[Dict]:
+        """List running monitor instances"""
+        logger.info("Listing running monitors")
+        instances = self.monitor_registry.get_all()
+        return [instance.to_dict() for instance in instances]
+
+    def get_monitor_status(self, monitor_id: str) -> Dict:
+        """Get status of a monitor"""
+        logger.info(f"Getting status for monitor: {monitor_id}")
+
+        instance = self.monitor_registry.get(monitor_id)
+        if not instance:
+            raise ValueError(f"Monitor not found: {monitor_id}")
+
+        # Update component statuses
+        for name, component in instance.components.items():
+            status = self.orchestrator.get_component_status(component.job_id)
+            component.status = status
+
+        return instance.to_dict()
+
+    def get_recipe_info(self, recipe_name: str) -> Dict:
+        """Get information about a recipe"""
+        return self.recipe_loader.get_recipe_info(recipe_name)
+
+    def _resolve_targets(
+        self,
+        target_specs: List[TargetService],
+        job_ids: Optional[List[str]] = None,
+    ) -> Dict[str, str]:
+        """
+        Resolve target services to endpoints
+
+        Returns:
+            Dict of {job_name: "host:port"}
+        """
+        targets = {}
+
+        for spec in target_specs:
+            # If job_id provided, use it
+            if job_ids and len(job_ids) > 0:
+                job_id = job_ids[0]
+                # Wait for the target job to be running
+                node = self._wait_for_job_node(job_id, timeout_seconds=60)
+                if node:
+                    targets[spec.name] = f"{node}:{spec.port}"
+                    logger.info(f"Resolved {spec.name} -> {node}:{spec.port}")
+                else:
+                    logger.warning(f"Could not resolve node for job {job_id}")
+            # If endpoint directly specified
+            elif spec.endpoint:
+                targets[spec.name] = spec.endpoint
+                logger.info(f"Using direct endpoint for {spec.name}: {spec.endpoint}")
+            # Try to find by service name
+            elif spec.job_id:
+                node = self._wait_for_job_node(spec.job_id, timeout_seconds=60)
+                if node:
+                    targets[spec.name] = f"{node}:{spec.port}"
+                    logger.info(f"Resolved {spec.name} -> {node}:{spec.port}")
+
+        return targets
+
+    def _get_job_node(self, job_id: str) -> Optional[str]:
+        """Get the node where a SLURM job is running (immediate check, no waiting)"""
         try:
             result = subprocess.run(
-                ["sbatch", script_path], capture_output=True, text=True, check=True
+                ["squeue", "-j", job_id, "--format=%N", "--noheader"],
+                capture_output=True,
+                text=True,
+                check=True,
             )
-            output = result.stdout.strip()
-            job_id = output.split()[-1]
-            instance.metadata["slurm_job_id"] = job_id
-            logger.info(f"SLURM monitor job submitted: {job_id}")
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"sbatch failed: {e.stderr}")
-        finally:
+
+            node = result.stdout.strip()
+            return node if node else None
+
+        except subprocess.CalledProcessError:
+            logger.warning(f"Could not find node for job: {job_id}")
+            return None
+
+    def _wait_for_job_node(
+        self, job_id: str, timeout_seconds: int = 120
+    ) -> Optional[str]:
+        """
+        Wait for a SLURM job to be running and return its node
+
+        Args:
+            job_id: SLURM job ID
+            timeout_seconds: Maximum time to wait (default: 120 seconds)
+
+        Returns:
+            Node hostname if job is running, None if timeout or job failed
+        """
+        start_time = time.time()
+        last_status = None
+
+        logger.info(
+            f"Waiting for job {job_id} to be running (timeout: {timeout_seconds}s)..."
+        )
+
+        while (time.time() - start_time) < timeout_seconds:
             try:
-                import os as _os
+                result = subprocess.run(
+                    ["squeue", "-j", job_id, "--format=%T|%N", "--noheader"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
 
-                _os.unlink(script_path)
-            except Exception:
-                pass
+                output = result.stdout.strip()
+                if not output:
+                    logger.warning(f"Job {job_id} not found in queue")
+                    return None
 
-        self._persist_instance(instance)
+                parts = output.split("|")
+                if len(parts) >= 2:
+                    status, node = parts[0].strip(), parts[1].strip()
 
-    # ----- Utility helpers -----
-    def _which(self, candidates: List[str]) -> Optional[str]:
-        """Return first executable found on PATH from candidates."""
-        import shutil
+                    # Log status changes
+                    if status != last_status:
+                        logger.info(f"Job {job_id} status: {status}")
+                        last_status = status
 
-        for name in candidates:
-            path = shutil.which(name)
-            if path:
-                return path
+                    if status == "RUNNING" and node:
+                        elapsed = time.time() - start_time
+                        logger.info(
+                            f"✓ Job {job_id} is running on node {node} (took {elapsed:.1f}s)"
+                        )
+                        return node
+                    elif status == "PENDING":
+                        logger.debug(f"Job {job_id} is pending, waiting...")
+                    elif status in ["FAILED", "CANCELLED", "TIMEOUT", "NODE_FAIL"]:
+                        logger.error(f"✗ Job {job_id} failed with status {status}")
+                        return None
+
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Error checking job {job_id}: {e}")
+
+            time.sleep(5)  # Wait 5 seconds before next check
+
+        elapsed = time.time() - start_time
+        logger.error(
+            f"✗ Timeout waiting for job {job_id} to start (waited {elapsed:.1f}s)"
+        )
         return None
-        out_dir = self.output_root / "monitors" / instance.id
-        out_dir.mkdir(parents=True, exist_ok=True)
-        dashboard = {
-            "title": f"UBenchAI - {instance.recipe.name}",
-            "panels": [
-                {"type": "graph", "title": "CPU % (local)", "targets": []},
-                {"type": "graph", "title": "Memory (local)", "targets": []},
-            ],
-            "timezone": "browser",
-        }
-        path = out_dir / "grafana-dashboard.json"
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(dashboard, f, indent=2)
-        # Placeholder URL users can import the dashboard into local Grafana
-        instance.grafana_url = "http://localhost:3000"
-        logger.info(f"Wrote Grafana dashboard stub: {path}")
-        return path
 
-    # ----- Persistence helpers -----
-    def _instance_dir(self, instance_id: str) -> Path:
-        return self.output_root / "monitors" / instance_id
-
-    def _persist_instance(self, instance: MonitorInstance) -> None:
-        out_dir = self._instance_dir(instance.id)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        payload = instance.to_dict()
-        with open(out_dir / "instance.json", "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-
-    def _load_existing_instances(self) -> None:
-        monitors_root = self.output_root / "monitors"
-        if not monitors_root.exists():
-            return
-        for child in monitors_root.iterdir():
-            if not child.is_dir():
-                continue
-            inst = self._load_instance_from_disk(child.name)
-            if inst:
-                self._instances[inst.id] = inst
-
-    def _load_instance_from_disk(self, instance_id: str) -> Optional[MonitorInstance]:
-        inst_dir = self._instance_dir(instance_id)
-        meta_path = inst_dir / "instance.json"
-        if not meta_path.exists():
-            return None
-        try:
-            with open(meta_path, "r", encoding="utf-8") as f:
-                data: Dict = json.load(f)
-            recipe_name = (data.get("recipe") or {}).get("name")
-            if not recipe_name:
-                return None
-            recipe: MonitorRecipe = self.recipe_loader.load_recipe(recipe_name)
-            status_raw = data.get("status") or MonitorStatus.RUNNING
-            status = (
-                status_raw
-                if isinstance(status_raw, MonitorStatus)
-                else MonitorStatus(str(status_raw))
-            )
-            inst = MonitorInstance(
-                id=str(data.get("id")),
-                recipe=recipe,
-                status=status,
-                created_at_iso=str(data.get("created_at")),
-                prometheus_url=data.get("prometheus_url"),
-                grafana_url=data.get("grafana_url"),
-                targets=list(data.get("targets") or []),
-                metadata=dict(data.get("metadata") or {}),
-            )
-            return inst
-        except Exception as exc:  # pragma: no cover
-            logger.warning(f"Failed to load monitor instance {instance_id}: {exc}")
-            return None
+    def _cleanup_instance(self, instance: MonitorInstance) -> None:
+        """Cleanup a failed instance"""
+        for name, component in instance.components.items():
+            try:
+                self.orchestrator.stop_component(component.job_id)
+            except Exception as e:
+                logger.error(f"Error cleaning up component {name}: {e}")

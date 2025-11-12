@@ -224,70 +224,86 @@ def handle_client_commands(args):
         print(f"\n✗ Unexpected Error: {e}")
         sys.exit(1)
 
-
 def handle_monitor_commands(args):
     """Handle monitor subcommands"""
     logger.info(f"Monitor Module - Action: {args.action}")
     from ubenchai.monitors.manager import MonitorManager
 
-    manager = MonitorManager(recipe_directory="recipes", output_root="logs")
+    manager = MonitorManager(
+        recipe_directory="recipes/monitors",
+        output_root="logs/monitors",
+        dashboards_directory="dashboards",
+    )
 
-    if args.action == "start":
-        targets = []
-        if args.targets:
-            targets = [t.strip() for t in args.targets.split(",") if t.strip()]
-        inst = manager.start_monitor(args.recipe, targets=targets, mode=args.mode)
-        print("\n Monitor started:")
-        print(f"   Monitor ID: {inst.id}")
-        print(f"   Recipe: {inst.recipe.name}")
-        print(f"   Status: {inst.status}")
-        if inst.grafana_url:
-            print(f"   Grafana: {inst.grafana_url}")
-        if inst.prometheus_url:
-            print(f"   Prometheus: {inst.prometheus_url}")
-    elif args.action == "stop":
-        ok = manager.stop_monitor(args.monitor_id)
-        if ok:
-            print(f"\n Monitor stopped: {args.monitor_id}")
-        else:
-            print(f"\n Monitor not found: {args.monitor_id}")
-    elif args.action == "list":
-        print("\n Available Monitor Recipes:")
-        recs = manager.list_available_recipes()
-        if recs:
-            for r in recs:
-                print(f"   • {r}")
-        else:
-            print("   No monitor recipes found")
+    try:
+        if args.action == "start":
+            logger.info(f"Starting monitoring stack from recipe: {args.recipe}")
 
-        print("\n Running Monitors:")
-        mons = manager.list_running_monitors()
-        if mons:
-            table = []
-            for m in mons:
-                table.append(
-                    [m["id"][:8], m["recipe"]["name"], m["status"], m["created_at"]]
-                )
-            print(
-                tabulate(
-                    table,
-                    headers=["Monitor ID", "Recipe", "Status", "Created"],
-                    tablefmt="simple",
-                )
+            target_job_ids = None
+            if args.targets:
+                target_job_ids = [t.strip() for t in args.targets.split(",")]
+
+            instance = manager.start_monitor(
+                recipe_name=args.recipe,
+                target_job_ids=target_job_ids,
             )
-        else:
-            print("   No running monitors")
-    elif args.action == "metrics":
-        path = manager.export_metrics(args.monitor_id, output=args.output)
-        print("\n Metrics exported:")
-        print(f"   File: {path}")
-    elif args.action == "report":
-        # For now, just export metrics; users can run separate report command
-        path = manager.export_metrics(args.monitor_id)
-        print("\n Generated metrics snapshot for reporting:")
-        print(f"   File: {path}")
-    else:
-        raise ValueError("Unknown monitor action")
+
+            print(f"\n✓ Monitoring stack started!")
+            print(f"   Monitor ID: {instance.id}")
+            print(f"   Recipe: {instance.recipe.name}\n")
+
+            if instance.prometheus_url:
+                print(f"   Prometheus: {instance.prometheus_url}")
+            if instance.grafana_url:
+                print(f"   Grafana: {instance.grafana_url} (admin/admin)\n")
+
+        elif args.action == "stop":
+            success = manager.stop_monitor(args.monitor_id)
+            print(f"\n{'✓' if success else '✗'} Monitor {args.monitor_id}")
+
+        elif args.action == "list":
+            print("\n📊 Monitor Recipes:")
+            for recipe in manager.list_available_monitors():
+                info = manager.get_recipe_info(recipe)
+                print(f"   • {recipe}: {info.get('description', '')}")
+
+            print("\n🔍 Running Monitors:")
+            monitors = manager.list_running_monitors()
+            if monitors:
+                from tabulate import tabulate
+
+                table = [
+                    [
+                        m["id"][:8],
+                        m["recipe_name"],
+                        m["status"],
+                        m.get("prometheus_url", "N/A")[:30],
+                    ]
+                    for m in monitors
+                ]
+                print(tabulate(table, headers=["ID", "Recipe", "Status", "Prometheus"]))
+            else:
+                print("   None running")
+
+        elif args.action == "metrics":
+            status = manager.get_monitor_status(args.monitor_id)
+            print(f"\n📊 {status['recipe_name']} ({status['status']})")
+            if status.get("prometheus_url"):
+                print(f"   Prometheus: {status['prometheus_url']}")
+            if status.get("grafana_url"):
+                print(f"   Grafana: {status['grafana_url']}")
+
+        elif args.action == "report":
+            status = manager.get_monitor_status(args.monitor_id)
+            print(f"\n📈 Monitor Report: {status['recipe_name']}")
+            for name, comp in status.get("components", {}).items():
+                print(f"   {name}: {comp['endpoint']} ({comp['status']})")
+
+    except Exception as e:
+        logger.exception("Monitor command failed")
+        print(f"\n✗ Error: {e}")
+        sys.exit(1)
+
 
 
 def handle_report_commands(args):
@@ -668,3 +684,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
