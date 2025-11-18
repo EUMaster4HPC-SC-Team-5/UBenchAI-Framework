@@ -128,7 +128,7 @@ echo "Model: facebook/opt-125m"
 echo "Duration: 120 seconds"
 echo ""
 
-CLIENT_OUTPUT=$(poetry run ubenchai client run --recipe vllm-stress-test 2>&1)
+CLIENT_OUTPUT=$(poetry run ubenchai client run --recipe vllm-stress-test2 2>&1)
 echo "$CLIENT_OUTPUT"
 
 # Extract client run ID and SLURM job ID
