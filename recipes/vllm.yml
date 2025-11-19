@@ -33,7 +33,7 @@ environment:
 
 volumes:
   # Project scratch directory for persistent model storage
-  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5/vllm
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/team-5-$USER/vllm
     container_path: /root/.cache/huggingface
     readonly: false
 
