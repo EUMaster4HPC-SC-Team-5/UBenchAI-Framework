@@ -84,12 +84,12 @@ class HealthResolver:
         # Try exact match first
         if service_name in SERVICE_PORTS:
             return SERVICE_PORTS[service_name]
-        
+
         # Try partial match
         for key, port in SERVICE_PORTS.items():
             if key in service_name.lower():
                 return port
-        
+
         # Default fallback
         logger.warning(f"Unknown service {service_name}, using default port 8000")
         return 8000
@@ -99,12 +99,12 @@ class HealthResolver:
         # Try exact match
         if service_name in SERVICE_HEALTH_ENDPOINTS:
             return SERVICE_HEALTH_ENDPOINTS[service_name]
-        
+
         # Try partial match
         for key, endpoint in SERVICE_HEALTH_ENDPOINTS.items():
             if key in service_name.lower():
                 return endpoint
-        
+
         # Default fallback
         return "/"
 
@@ -205,7 +205,7 @@ class HealthResolver:
 
             # Get service-specific health endpoint
             health_path = self._get_health_endpoint(target.service or "")
-            
+
             # Try a simple GET request
             response = requests.get(
                 f"{url}{health_path}",

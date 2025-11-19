@@ -224,6 +224,7 @@ def handle_client_commands(args):
         print(f"\n✗ Unexpected Error: {e}")
         sys.exit(1)
 
+
 def handle_monitor_commands(args):
     """Handle monitor subcommands"""
     logger.info(f"Monitor Module - Action: {args.action}")
@@ -303,7 +304,6 @@ def handle_monitor_commands(args):
         logger.exception("Monitor command failed")
         print(f"\n✗ Error: {e}")
         sys.exit(1)
-
 
 
 def handle_report_commands(args):
@@ -684,4 +684,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -4,7 +4,7 @@ Workload Generator v2 - Multi-service benchmark client
 
 Supports:
 - Ollama: LLM inference server
-- Qdrant: Vector database  
+- Qdrant: Vector database
 - vLLM: OpenAI-compatible LLM inference server
 """
 
@@ -261,9 +261,7 @@ class QdrantClient(ServiceClient):
             if response.status_code == 404:
                 # Create collection
                 create_url = f"{self.endpoint}/collections/{self.collection_name}"
-                payload = {
-                    "vectors": {"size": self.vector_size, "distance": "Cosine"}
-                }
+                payload = {"vectors": {"size": self.vector_size, "distance": "Cosine"}}
                 response = requests.put(create_url, json=payload, timeout=10)
 
                 if response.status_code in [200, 201]:
@@ -322,9 +320,7 @@ class QdrantClient(ServiceClient):
         for i in range(batch_size):
             point_id = random.randint(1, 1000000)
             vector = np.random.randn(self.vector_size).tolist()
-            points.append(
-                {"id": point_id, "vector": vector, "payload": {"index": i}}
-            )
+            points.append({"id": point_id, "vector": vector, "payload": {"index": i}})
 
         payload = {"points": points}
 
@@ -382,7 +378,9 @@ class QdrantClient(ServiceClient):
 class VLLMClient(ServiceClient):
     """Client for vLLM OpenAI-compatible inference server"""
 
-    def __init__(self, endpoint: str, model_name: str = "facebook/opt-125m", timeout: int = 30):
+    def __init__(
+        self, endpoint: str, model_name: str = "facebook/opt-125m", timeout: int = 30
+    ):
         super().__init__(endpoint, timeout)
         self.model_name = model_name
 
@@ -664,7 +662,9 @@ def main():
         required=True,
         help="Service type",
     )
-    parser.add_argument("--model", default="tinyllama", help="Model name (for LLM services)")
+    parser.add_argument(
+        "--model", default="tinyllama", help="Model name (for LLM services)"
+    )
     parser.add_argument(
         "--pattern", choices=["closed-loop", "open-loop"], required=True
     )
