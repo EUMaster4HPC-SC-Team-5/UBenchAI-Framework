@@ -1,0 +1,155 @@
+{
+  "title": "Qdrant Production Monitoring",
+  "uid": "qdrant-metrics",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Query Throughput (req/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "rate(rest_responses_total{job=\"qdrant-vectordb\", endpoint=\"/collections/{name}/points/search\", method=\"POST\", status=\"200\"}[1m])",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "axisLabel": "req/s", "axisPlacement": "auto" }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 / p99 Query Latency (s)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(rest_responses_duration_seconds_bucket{job=\"qdrant-vectordb\", endpoint=\"/collections/{name}/points/search\", method=\"POST\", status=\"200\"}[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(rest_responses_duration_seconds_bucket{job=\"qdrant-vectordb\", endpoint=\"/collections/{name}/points/search\", method=\"POST\", status=\"200\"}[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "axisLabel": "seconds", "axisPlacement": "auto" }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "stat",
+      "title": "Total Collections",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
+      "id": 3,
+      "targets": [
+        { "expr": "collections_total{job=\"qdrant-vectordb\"}", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Total Vectors",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 8 },
+      "id": 4,
+      "targets": [
+        { "expr": "collections_vector_total{job=\"qdrant-vectordb\"}", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error Rate (err/s, Δ5m)",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 8 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "rate(rest_responses_fail_total{job=\"qdrant-vectordb\", endpoint=\"/collections/{name}/points/search\", method=\"POST\", status=\"200\"}[5m])",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory Usage (bytes)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "memory_allocated_bytes{job=\"qdrant-vectordb\"}",
+          "legendFormat": "Allocated",
+          "refId": "A"
+        },
+        {
+          "expr": "memory_resident_bytes{job=\"qdrant-vectordb\"}",
+          "legendFormat": "Resident",
+          "refId": "B"
+        },
+        {
+          "expr": "memory_active_bytes{job=\"qdrant-vectordb\"}",
+          "legendFormat": "Active",
+          "refId": "C"
+        },
+        {
+          "expr": "memory_retained_bytes{job=\"qdrant-vectordb\"}",
+          "legendFormat": "Retained",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "axisLabel": "bytes", "axisPlacement": "auto" } }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    }
+  ]
+}
+
