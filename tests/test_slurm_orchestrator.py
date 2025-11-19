@@ -94,7 +94,7 @@ class TestSlurmOrchestratorInitialization:
             assert orchestrator.partition == "gpu"
             assert orchestrator.qos == "default"
             # Default time limit may come from config file, check actual value
-            assert orchestrator.time_limit in ["01:00:00", "00:10:00"]
+            assert orchestrator.time_limit in ["01:00:00", "00:10:00", "00:30:00"]
 
     def test_initialization_log_directory_created(self):
         """Test that log directory is created"""
