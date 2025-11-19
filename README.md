@@ -126,6 +126,7 @@ poetry run ubenchai client run --recipe stress-test
 ```
 
 ### Monitor Module
+
 Start monitoring and metrics collection:
 
 ```bash
@@ -138,19 +139,16 @@ ubenchai monitor stop <monitor-id>
 # List monitors
 ubenchai monitor list
 
-# Show metrics
-ubenchai monitor metrics <monitor-id> [--output <file>]
-
-# Generate report
-ubenchai monitor report <monitor-id> [--format html|json|pdf]
 ```
 
 **Example:**
 ```bash
-poetry run ubenchai monitor start --recipe system-metrics --targets api-server,db-server
+poetry run ubenchai monitor start --recipe vllm-monitor --targets 12345678
 ```
 
-### Code Formatting
+**See the [Complete Monitoring Workflow](#complete-monitoring-workflow) section below for a detailed step-by-step guide.**
+
+## Code Formatting
 
 The project uses Black for code formatting:
 
@@ -654,42 +652,36 @@ classDiagram
 - **HealthResolver**: Resolves and validates server endpoints before client execution. Performs connectivity checks to ensure the target is reachable.
 
 
-### Monitor Module
-
-Start monitoring and metrics collection:
-
-```bash
-# Start monitoring
-ubenchai monitor start --recipe <recipe-name> [--targets <service1,service2>]
-
-# Stop monitoring
-ubenchai monitor stop <monitor-id>
-
-# List monitors
-ubenchai monitor list
-
-```
-
-**Example:**
-```bash
-poetry run ubenchai monitor start --recipe vllm-monitor --targets 12345678
-```
-
-**See the [Complete Monitoring Workflow](#complete-monitoring-workflow) section below for a detailed step-by-step guide.**
 
 ## Complete Monitoring Workflow
 
-This section provides a complete step-by-step guide for deploying a service (vLLM) and monitoring it with Prometheus and Grafana.
+This section provides a complete step-by-step guide for deploying a service and monitoring it with Prometheus and Grafana.
+
+The workflow is the same for all services, but tou need to pick the appropriate recipes:
+
+| Service | Server recipe      | Monitor recipe    | Client recipe         |
+|---------|--------------------|-------------------|-----------------------|
+| vLLM    | `vllm`             | `vllm-monitor`    | `vllm-stress-test2`   |
+| Ollama  | `ollama-tiny`      | `ollama-monitor`  | `ollama-stress-test`  |
+| Qdrant  | `qdrant-vectordb`  | `qdrant-monitor`  | `qdrant-stress-test`  |
+
 
 ### Step 1: Start the vLLM Service
 
-First, deploy the vLLM inference service on MeluXina:
+First, deploy the inference service on MeluXina:
 
 ```bash
+# vLLM
 poetry run ubenchai server start --recipe vllm
+
+# or Qdrant
+poetry run ubenchai server start --recipe qdrant-vectordb
+
+# or Ollama
+poetry run ubenchai server start --recipe ollama-tiny
 ```
 
-**Expected Output:**
+**Expected Output with vLLM:**
 ```
 ✓ Service started successfully!
    Service ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890
@@ -705,9 +697,57 @@ You can also find running jobs with:
 squeue --me
 ```
 
+#### Additional Step (Ollama only)
+
+If you started **Ollama** with `--recipe ollama-tiny`, you must also run the **Python metrics exporter** on the same node as the Ollama server.
+
+1. **Enter the job** using the Orchestrator Handle from above (e.g. `12345678`):
+
+   ```bash
+   srun --jobid 12345678 --pty bash
+   ```
+   
+2. Start the exporter in this shell:
+   
+   ```bash
+   cd ~/UBenchAI-Framework/ollama-exporter
+   nohup python3 ollama_metrics_exporter.py > ollama_exporter.log 2>&1 &
+   ```
+   
+   You should see something like:
+   
+   ```text
+   [1] 12345
+   ```
+   
+3. Go back to the framework root and verify that the exporter exposes metrics:
+   
+   ```bash
+   cd ~/UBenchAI-Framework
+   curl http://localhost:8000/metrics | head
+   ```
+   
+   You should see lines like:
+
+   ```text
+   # HELP ollama_up Ollama HTTP health (1=up,0=down)
+   # TYPE ollama_up gauge
+   ollama_up 1
+   # HELP ollama_models_total Number of models reported by /api/tags
+   # TYPE ollama_models_total gauge
+   ollama_models_total 1
+   ...
+   ```
+
+   If this works, the Ollama exporter is up and running.
+   You can keep this srun shell open or close it; the exporter will continue running inside the job until the SLURM job ends.
+
 ### Step 2: Start the Monitoring Stack
 
-Start Prometheus and Grafana to monitor your vLLM service using the job ID from Step 1:
+From this point on, the examples will use the **vLLM** service.  
+You can obtain the same workflow for **Ollama** and **Qdrant** by using the corresponding recipes from the table above.
+
+Start Prometheus and Grafana to monitor your service using the job ID from Step 1:
 
 ```bash
 poetry run ubenchai monitor start --recipe vllm-monitor --targets 12345678
