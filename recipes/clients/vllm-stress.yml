@@ -1,0 +1,34 @@
+name: "vllm-stress-single"
+description: "Single-node heavy stress test for vLLM on MeluXina"
+
+target:
+  service: vllm-server   
+  protocol: http
+  timeout_seconds: 600   
+
+workload:
+  pattern: "closed-loop"
+  duration_seconds: 900 
+  concurrent_users: 128
+  think_time_ms: 10     
+
+dataset:
+  type: "synthetic"
+  params:
+    service_type: "vllm"
+    model_name: "mistralai/Mistral-7B-Instruct-v0.2"
+    prompt_length: 512
+    max_tokens: 1024     
+    temperature: 0.9
+
+orchestration:
+  mode: "slurm"
+  instances: 1
+  resources:
+    cpu_cores: 64        
+    memory_gb: 128
+
+output:
+  metrics: ["latency", "throughput", "p95", "p99"]
+  format: "json"
+  destination: "./results/vllm_single"

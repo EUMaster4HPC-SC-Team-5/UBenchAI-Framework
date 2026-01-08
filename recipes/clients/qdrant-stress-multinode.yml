@@ -1,0 +1,32 @@
+name: "qdrant-stress-multinode"
+description: "Distributed Vector Search - Extreme Load"
+
+target:
+  service: qdrant-server
+  protocol: http
+  timeout_seconds: 120
+
+workload:
+  pattern: "closed-loop"
+  duration_seconds: 900
+  concurrent_users: 128
+  think_time_ms: 0
+
+dataset:
+  type: "synthetic"
+  params:
+    service_type: "qdrant"
+    operation: "insert"
+    dimension: 1536
+
+orchestration:
+  mode: "slurm"
+  instances: 4
+  resources:
+    cpu_cores: 32
+    memory_gb: 64
+
+output:
+  metrics: ["latency", "throughput", "errors"]
+  format: "json"
+  destination: "./results/qdrant_multi"

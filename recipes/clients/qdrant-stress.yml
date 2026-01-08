@@ -1,0 +1,31 @@
+name: "qdrant-stress-single"
+description: "Single Node Vector Search Stress"
+
+target:
+  service: qdrant-server
+  protocol: http
+  timeout_seconds: 60
+
+workload:
+  pattern: "closed-loop"
+  duration_seconds: 600
+  concurrent_users: 256
+  think_time_ms: 0
+
+dataset:
+  type: "synthetic"
+  params:
+    service_type: "qdrant"
+    operation: "insert"
+
+orchestration:
+  mode: "slurm"
+  instances: 1
+  resources:
+    cpu_cores: 64
+    memory_gb: 64
+
+output:
+  metrics: ["latency", "throughput", "errors"]
+  format: "json"
+  destination: "./results/qdrant_single"

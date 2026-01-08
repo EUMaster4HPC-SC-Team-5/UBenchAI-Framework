@@ -1,0 +1,43 @@
+name: qdrant-server
+description: "Qdrant Vector Database Server"
+image: docker://qdrant/qdrant:latest
+
+resources:
+  nodes: 1
+  ntasks: 1
+  cpu_cores: 16
+  memory_gb: 64
+  gpu_count: 1          
+  time_limit: "00:45:00"
+
+ports:
+  - container_port: 6333
+    host_port: 6333
+    protocol: tcp
+
+environment:
+  QDRANT__SERVICE__HTTP_PORT: "6333"
+  QDRANT__SERVICE__HOST: "0.0.0.0"
+  QDRANT__STORAGE__STORAGE_PATH: "/qdrant/storage"
+
+volumes:
+  - host_path: /project/scratch/$SLURM_JOB_ACCOUNT/$USER/qdrant_data
+    container_path: /qdrant/storage
+    readonly: false
+
+healthcheck:
+  endpoint: /healthz
+  interval_seconds: 10
+  timeout_seconds: 5
+  initial_delay: 15
+
+command:
+  - /bin/bash
+  - -c
+  - |
+    # Crea la directory se non esiste
+    mkdir -p /qdrant/storage
+    
+    echo "Starting Qdrant..."
+    # FIX: Lanciamo direttamente il binario assoluto
+    /qdrant/qdrant

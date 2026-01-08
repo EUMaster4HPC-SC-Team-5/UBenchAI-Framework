@@ -1,0 +1,33 @@
+name: "ollama-stress-multinode"
+description: "Distributed load specifically to test Ollama queue management"
+
+target:
+  service: ollama-server
+  protocol: http
+  timeout_seconds: 1200
+
+workload:
+  pattern: "closed-loop"
+  duration_seconds: 600
+  concurrent_users: 50
+  think_time_ms: 100
+
+dataset:
+  type: "synthetic"
+  params:
+    service_type: "ollama"
+    model_name: "mistral"
+    prompt_length: 50
+    max_tokens: 100
+
+orchestration:
+  mode: "slurm"
+  instances: 2
+  resources:
+    cpu_cores: 32
+    memory_gb: 32
+
+output:
+  metrics: ["latency", "throughput", "errors"]
+  format: "json"
+  destination: "./results/ollama_multi"
