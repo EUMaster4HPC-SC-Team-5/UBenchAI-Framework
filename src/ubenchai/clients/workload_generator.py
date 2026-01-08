@@ -224,156 +224,88 @@ class OllamaClient(ServiceClient):
 
 
 class QdrantClient(ServiceClient):
-    """Client for Qdrant vector database"""
-
     def __init__(
         self,
         endpoint: str,
         collection_name: str = "benchmark_collection",
-        vector_size: int = 384,
+        vector_size: int = 1536,
         timeout: int = 30,
     ):
         super().__init__(endpoint, timeout)
         self.collection_name = collection_name
         self.vector_size = vector_size
         self._collection_created = False
+        
+        self.cached_vectors = [
+            np.random.randn(self.vector_size).tolist() for _ in range(1000) 
+        ]
 
     def test_connection(self) -> Tuple[bool, str]:
-        """Test connection to Qdrant"""
         try:
             url = f"{self.endpoint}/collections"
             response = requests.get(url, timeout=10)
-
             if response.status_code == 200:
-                # Try to create collection for benchmarking
                 self._create_collection()
-                return True, "Connection OK. Collection created for benchmarking."
-            else:
-                return False, f"Server returned HTTP {response.status_code}"
-
+                return True, "Connection OK"
+            return False, f"HTTP {response.status_code}"
         except Exception as e:
-            return False, f"Connection failed: {e}"
+            return False, str(e)
 
     def _create_collection(self) -> bool:
-        """Create benchmark collection if it doesn't exist"""
-        if self._collection_created:
-            return True
-
+        if self._collection_created: return True
         try:
-            # Check if collection exists
-            url = f"{self.endpoint}/collections/{self.collection_name}"
-            response = requests.get(url, timeout=5)
-
-            if response.status_code == 404:
-                # Create collection
-                create_url = f"{self.endpoint}/collections/{self.collection_name}"
-                payload = {"vectors": {"size": self.vector_size, "distance": "Cosine"}}
-                response = requests.put(create_url, json=payload, timeout=10)
-
-                if response.status_code in [200, 201]:
-                    logger.info(
-                        f"Created collection: {self.collection_name} (size={self.vector_size})"
-                    )
-                    self._collection_created = True
-                    return True
-
-            elif response.status_code == 200:
-                logger.info(f"Collection already exists: {self.collection_name}")
+            if requests.get(f"{self.endpoint}/collections/{self.collection_name}").status_code == 200:
                 self._collection_created = True
                 return True
+            
+            payload = {
+                "vectors": {"size": self.vector_size, "distance": "Cosine"},
+                "optimizers_config": {"default_segment_number": 2} 
+            }
+            resp = requests.put(f"{self.endpoint}/collections/{self.collection_name}", json=payload)
+            if resp.status_code in [200, 201]:
+                self._collection_created = True
+                return True
+        except Exception:
+            pass
+        return False
 
-            return False
-
-        except Exception as e:
-            logger.error(f"Failed to create collection: {e}")
-            return False
-
-    def send_request(
-        self, operation: str = "insert", **kwargs
-    ) -> Tuple[bool, float, Optional[str]]:
-        """
-        Send request to Qdrant
-
-        Operations:
-        - insert: Insert random vectors
-        - search: Search for similar vectors
-        - delete: Delete points
-        """
+    def send_request(self, operation: str = "insert", **kwargs) -> Tuple[bool, float, Optional[str]]:
         start_time = time.time()
-
         try:
             if operation == "insert":
                 return self._insert_vectors(start_time, **kwargs)
-            elif operation == "search":
-                return self._search_vectors(start_time, **kwargs)
-            elif operation == "delete":
-                return self._delete_vectors(start_time, **kwargs)
             else:
-                return False, 0, f"Unknown operation: {operation}"
-
+                return self._search_vectors(start_time, **kwargs)
         except Exception as e:
-            latency = time.time() - start_time
-            return False, latency, f"Request error: {str(e)[:100]}"
+            return False, time.time() - start_time, str(e)
 
-    def _insert_vectors(
-        self, start_time: float, batch_size: int = 10, **kwargs
-    ) -> Tuple[bool, float, Optional[str]]:
-        """Insert random vectors"""
+    def _insert_vectors(self, start_time: float, batch_size: int = 100, **kwargs):
+        real_batch_size = 100
         url = f"{self.endpoint}/collections/{self.collection_name}/points"
-
-        # Generate random vectors
+        
+        batch_vectors = self.cached_vectors[:real_batch_size]
         points = []
-        for i in range(batch_size):
-            point_id = random.randint(1, 1000000)
-            vector = np.random.randn(self.vector_size).tolist()
-            points.append({"id": point_id, "vector": vector, "payload": {"index": i}})
+        base_id = random.randint(1, 1000000000)
+        
+        for i, vec in enumerate(batch_vectors):
+            points.append({
+                "id": base_id + i, 
+                "vector": vec
+            })
 
-        payload = {"points": points}
-
-        response = requests.put(url, json=payload, timeout=self.timeout)
+        response = requests.put(f"{url}?wait=false", json={"points": points}, timeout=self.timeout)
         latency = time.time() - start_time
+        return response.status_code in [200, 201], latency, None
 
-        if response.status_code in [200, 201]:
-            return True, latency, None
-        else:
-            return False, latency, f"HTTP {response.status_code}"
-
-    def _search_vectors(
-        self, start_time: float, top_k: int = 10, **kwargs
-    ) -> Tuple[bool, float, Optional[str]]:
-        """Search for similar vectors"""
+    def _search_vectors(self, start_time: float, top_k: int = 10, **kwargs):
         url = f"{self.endpoint}/collections/{self.collection_name}/points/search"
-
-        # Generate random query vector
-        query_vector = np.random.randn(self.vector_size).tolist()
-
+        query_vector = random.choice(self.cached_vectors)
+        
         payload = {"vector": query_vector, "limit": top_k}
-
         response = requests.post(url, json=payload, timeout=self.timeout)
         latency = time.time() - start_time
-
-        if response.status_code == 200:
-            return True, latency, None
-        else:
-            return False, latency, f"HTTP {response.status_code}"
-
-    def _delete_vectors(
-        self, start_time: float, **kwargs
-    ) -> Tuple[bool, float, Optional[str]]:
-        """Delete random points"""
-        url = f"{self.endpoint}/collections/{self.collection_name}/points/delete"
-
-        # Delete random points
-        point_ids = [random.randint(1, 1000000) for _ in range(10)]
-        payload = {"points": point_ids}
-
-        response = requests.post(url, json=payload, timeout=self.timeout)
-        latency = time.time() - start_time
-
-        if response.status_code == 200:
-            return True, latency, None
-        else:
-            return False, latency, f"HTTP {response.status_code}"
+        return response.status_code == 200, latency, None
 
 
 # ============================================================================
@@ -501,16 +433,12 @@ class WorkloadGenerator:
         self.target_endpoint = target_endpoint
         self.service_type = service_type.lower()
         self.timeout = timeout
-
+        
         # NEW: Get node information from SLURM environment or parameter
-        self.node_id = (
-            node_id if node_id is not None else int(os.getenv("SLURM_PROCID", "0"))
-        )
+        self.node_id = node_id if node_id is not None else int(os.getenv("SLURM_PROCID", "0"))
         self.hostname = os.getenv("HOSTNAME", "unknown")
-
-        logger.info(
-            f"WorkloadGenerator: node_id={self.node_id}, hostname={self.hostname}"
-        )
+        
+        logger.info(f"WorkloadGenerator: node_id={self.node_id}, hostname={self.hostname}")
 
         # Initialize appropriate client
         if self.service_type == "ollama":
@@ -725,15 +653,16 @@ def main():
     # ========================================================================
     # Determina il Node ID (da argomento o variabile d'ambiente)
     current_node_id = (
-        args.node_id
-        if args.node_id is not None
+        args.node_id if args.node_id is not None 
         else int(os.getenv("SLURM_PROCID", "0"))
     )
-
+    
     # IMPORTANTE: Varia il seed in base al nodo!
     # Altrimenti tutti i nodi generano gli stessi numeri casuali.
     seed_value = int(time.time()) + current_node_id
-    logger.info(f"[Node {current_node_id}] Initializing random seed: {seed_value}")
+    logger.info(
+        f"[Node {current_node_id}] Initializing random seed: {seed_value}"
+    )
     random.seed(seed_value)
     np.random.seed(seed_value)
     # ========================================================================
@@ -802,24 +731,12 @@ def main():
     print(f"[Node {generator.node_id}] Node ID:             {metrics['node_id']}")
     print(f"[Node {generator.node_id}] Hostname:            {metrics['hostname']}")
     print(f"[Node {generator.node_id}] Service Type:        {args.service_type}")
-    print(
-        f"[Node {generator.node_id}] Total Requests:      {metrics['total_requests']}"
-    )
-    print(
-        f"[Node {generator.node_id}] Successful:          {metrics['successful_requests']}"
-    )
-    print(
-        f"[Node {generator.node_id}] Failed:              {metrics['failed_requests']}"
-    )
-    print(
-        f"[Node {generator.node_id}] Success Rate:        {metrics['success_rate']:.2%}"
-    )
-    print(
-        f"[Node {generator.node_id}] Duration:            {metrics['duration_seconds']:.2f}s"
-    )
-    print(
-        f"[Node {generator.node_id}] Throughput:          {metrics['throughput_rps']:.2f} req/s"
-    )
+    print(f"[Node {generator.node_id}] Total Requests:      {metrics['total_requests']}")
+    print(f"[Node {generator.node_id}] Successful:          {metrics['successful_requests']}")
+    print(f"[Node {generator.node_id}] Failed:              {metrics['failed_requests']}")
+    print(f"[Node {generator.node_id}] Success Rate:        {metrics['success_rate']:.2%}")
+    print(f"[Node {generator.node_id}] Duration:            {metrics['duration_seconds']:.2f}s")
+    print(f"[Node {generator.node_id}] Throughput:          {metrics['throughput_rps']:.2f} req/s")
 
     if "latency_mean" in metrics:
         print(f"\n[Node {generator.node_id}] Latency Statistics (seconds):")
