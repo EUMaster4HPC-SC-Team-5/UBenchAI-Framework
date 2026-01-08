@@ -1,0 +1,39 @@
+name: "vllm-stress-test-heavy"
+description: "Heavy stress test for vLLM - push to limits"
+
+target:
+  service: vllm-singlenode
+  protocol: http
+  timeout_seconds: 180
+
+workload:
+  pattern: "closed-loop"
+  duration_seconds: 600
+  concurrent_users: 50
+  think_time_ms: 50
+
+dataset:
+  type: "synthetic"
+  params:
+    service_type: "vllm"  
+    model_name: "mistralai/Mistral-7B-Instruct-v0.2"
+    prompt_length: 512
+    max_tokens: 256
+    temperature: 0.7
+    top_p: 0.9
+
+orchestration:
+  mode: "slurm"
+  instances: 4  
+  resources:
+    cpu_cores: 16
+    memory_gb: 32
+
+output:
+  metrics:
+    - "latency"
+    - "throughput"
+    - "p95"
+    - "p99"
+  format: "json"
+  destination: "./results"
