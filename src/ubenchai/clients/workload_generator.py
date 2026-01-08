@@ -501,12 +501,16 @@ class WorkloadGenerator:
         self.target_endpoint = target_endpoint
         self.service_type = service_type.lower()
         self.timeout = timeout
-        
+
         # NEW: Get node information from SLURM environment or parameter
-        self.node_id = node_id if node_id is not None else int(os.getenv("SLURM_PROCID", "0"))
+        self.node_id = (
+            node_id if node_id is not None else int(os.getenv("SLURM_PROCID", "0"))
+        )
         self.hostname = os.getenv("HOSTNAME", "unknown")
-        
-        logger.info(f"WorkloadGenerator: node_id={self.node_id}, hostname={self.hostname}")
+
+        logger.info(
+            f"WorkloadGenerator: node_id={self.node_id}, hostname={self.hostname}"
+        )
 
         # Initialize appropriate client
         if self.service_type == "ollama":
@@ -721,16 +725,15 @@ def main():
     # ========================================================================
     # Determina il Node ID (da argomento o variabile d'ambiente)
     current_node_id = (
-        args.node_id if args.node_id is not None 
+        args.node_id
+        if args.node_id is not None
         else int(os.getenv("SLURM_PROCID", "0"))
     )
-    
+
     # IMPORTANTE: Varia il seed in base al nodo!
     # Altrimenti tutti i nodi generano gli stessi numeri casuali.
     seed_value = int(time.time()) + current_node_id
-    logger.info(
-        f"[Node {current_node_id}] Initializing random seed: {seed_value}"
-    )
+    logger.info(f"[Node {current_node_id}] Initializing random seed: {seed_value}")
     random.seed(seed_value)
     np.random.seed(seed_value)
     # ========================================================================
@@ -799,12 +802,24 @@ def main():
     print(f"[Node {generator.node_id}] Node ID:             {metrics['node_id']}")
     print(f"[Node {generator.node_id}] Hostname:            {metrics['hostname']}")
     print(f"[Node {generator.node_id}] Service Type:        {args.service_type}")
-    print(f"[Node {generator.node_id}] Total Requests:      {metrics['total_requests']}")
-    print(f"[Node {generator.node_id}] Successful:          {metrics['successful_requests']}")
-    print(f"[Node {generator.node_id}] Failed:              {metrics['failed_requests']}")
-    print(f"[Node {generator.node_id}] Success Rate:        {metrics['success_rate']:.2%}")
-    print(f"[Node {generator.node_id}] Duration:            {metrics['duration_seconds']:.2f}s")
-    print(f"[Node {generator.node_id}] Throughput:          {metrics['throughput_rps']:.2f} req/s")
+    print(
+        f"[Node {generator.node_id}] Total Requests:      {metrics['total_requests']}"
+    )
+    print(
+        f"[Node {generator.node_id}] Successful:          {metrics['successful_requests']}"
+    )
+    print(
+        f"[Node {generator.node_id}] Failed:              {metrics['failed_requests']}"
+    )
+    print(
+        f"[Node {generator.node_id}] Success Rate:        {metrics['success_rate']:.2%}"
+    )
+    print(
+        f"[Node {generator.node_id}] Duration:            {metrics['duration_seconds']:.2f}s"
+    )
+    print(
+        f"[Node {generator.node_id}] Throughput:          {metrics['throughput_rps']:.2f} req/s"
+    )
 
     if "latency_mean" in metrics:
         print(f"\n[Node {generator.node_id}] Latency Statistics (seconds):")

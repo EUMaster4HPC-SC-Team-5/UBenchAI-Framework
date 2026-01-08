@@ -83,9 +83,15 @@ def aggregate_metrics(results: List[Dict]) -> Dict:
         }
     else:
         # Aggregate from node-level statistics if raw latencies not available
-        latency_mins = [m.get("latency_min", 0) for m in all_metrics if "latency_min" in m]
-        latency_maxs = [m.get("latency_max", 0) for m in all_metrics if "latency_max" in m]
-        latency_means = [m.get("latency_mean", 0) for m in all_metrics if "latency_mean" in m]
+        latency_mins = [
+            m.get("latency_min", 0) for m in all_metrics if "latency_min" in m
+        ]
+        latency_maxs = [
+            m.get("latency_max", 0) for m in all_metrics if "latency_max" in m
+        ]
+        latency_means = [
+            m.get("latency_mean", 0) for m in all_metrics if "latency_mean" in m
+        ]
 
         if latency_means:
             latency_stats = {
@@ -104,7 +110,9 @@ def aggregate_metrics(results: List[Dict]) -> Dict:
         "total_requests": total_requests,
         "successful_requests": successful_requests,
         "failed_requests": failed_requests,
-        "success_rate": successful_requests / total_requests if total_requests > 0 else 0,
+        "success_rate": (
+            successful_requests / total_requests if total_requests > 0 else 0
+        ),
         "duration_seconds": total_duration,
         "aggregate_throughput_rps": (
             successful_requests / total_duration if total_duration > 0 else 0
@@ -132,9 +140,7 @@ def aggregate_metrics(results: List[Dict]) -> Dict:
     return aggregated
 
 
-def save_aggregated_results(
-    aggregated: Dict, output_dir: str, run_prefix: str
-) -> str:
+def save_aggregated_results(aggregated: Dict, output_dir: str, run_prefix: str) -> str:
     """
     Save aggregated results to file
 
@@ -181,7 +187,9 @@ def print_summary(aggregated: Dict):
 
     if "node_breakdown" in aggregated:
         print(f"\nPer-Node Breakdown:")
-        print(f"{'Node ID':<10} {'Hostname':<20} {'Requests':<12} {'Throughput (req/s)':<20}")
+        print(
+            f"{'Node ID':<10} {'Hostname':<20} {'Requests':<12} {'Throughput (req/s)':<20}"
+        )
         print("-" * 70)
         for node in aggregated["node_breakdown"]:
             print(

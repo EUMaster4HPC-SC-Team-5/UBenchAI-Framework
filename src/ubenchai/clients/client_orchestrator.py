@@ -265,10 +265,12 @@ exit $EXIT_CODE
             Command string to execute workload
         """
         output_dir = run.artifacts_dir or "./results"
-        
+
         # IMPORTANT: Use SLURM_PROCID to create unique output files per node
         # This ensures each node writes to its own file
-        output_file = f"{output_dir}/{recipe.name}_{run.id[:8]}_node_${{SLURM_PROCID}}.json"
+        output_file = (
+            f"{output_dir}/{recipe.name}_{run.id[:8]}_node_${{SLURM_PROCID}}.json"
+        )
 
         # Get workload parameters
         pattern = recipe.workload.pattern
@@ -279,11 +281,11 @@ exit $EXIT_CODE
         # Get dataset parameters
         prompt_length = recipe.dataset.params.get("prompt_length", 50)
         model_name = recipe.dataset.params.get("model_name", "tinyllama")
-        
+
         # Determine service type from target service name or dataset params
         # Priority: dataset.params.service_type > infer from service name > default to vllm
         service_type = recipe.dataset.params.get("service_type")
-        
+
         if not service_type and recipe.target.service:
             # Infer from service name
             service_name_lower = recipe.target.service.lower()
