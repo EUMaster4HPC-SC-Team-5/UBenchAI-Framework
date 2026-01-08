@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Workload Generator v2 - Multi-service benchmark client
+Workload Generator v2 - Multi-service benchmark client with multinode support
 
 Supports:
 - Ollama: LLM inference server
 - Qdrant: Vector database
 - vLLM: OpenAI-compatible LLM inference server
+- Multinode execution via SLURM
 """
 
 import time
 import json
 import random
 import statistics
+import os
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -39,6 +41,8 @@ class WorkloadResult:
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     custom_metrics: Dict = field(default_factory=dict)
+    node_id: Optional[int] = None  # NEW: Node identifier
+    hostname: Optional[str] = None  # NEW: Hostname
 
     def add_success(self, latency: float):
         """Record successful request"""
@@ -61,6 +65,8 @@ class WorkloadResult:
         )
 
         metrics = {
+            "node_id": self.node_id,
+            "hostname": self.hostname,
             "total_requests": self.total_requests,
             "successful_requests": self.successful_requests,
             "failed_requests": self.failed_requests,
@@ -471,7 +477,7 @@ class VLLMClient(ServiceClient):
 
 class WorkloadGenerator:
     """
-    Multi-service workload generator for benchmarking
+    Multi-service workload generator for benchmarking with multinode support
     """
 
     def __init__(
@@ -479,6 +485,7 @@ class WorkloadGenerator:
         target_endpoint: str,
         service_type: str = "ollama",
         timeout: int = 30,
+        node_id: Optional[int] = None,
         **service_kwargs,
     ):
         """
@@ -488,11 +495,18 @@ class WorkloadGenerator:
             target_endpoint: Base URL of the service
             service_type: Type of service (ollama, qdrant, vllm)
             timeout: Request timeout in seconds
+            node_id: Node identifier (for multinode execution)
             **service_kwargs: Service-specific configuration
         """
         self.target_endpoint = target_endpoint
         self.service_type = service_type.lower()
         self.timeout = timeout
+        
+        # NEW: Get node information from SLURM environment or parameter
+        self.node_id = node_id if node_id is not None else int(os.getenv("SLURM_PROCID", "0"))
+        self.hostname = os.getenv("HOSTNAME", "unknown")
+        
+        logger.info(f"WorkloadGenerator: node_id={self.node_id}, hostname={self.hostname}")
 
         # Initialize appropriate client
         if self.service_type == "ollama":
@@ -544,11 +558,14 @@ class WorkloadGenerator:
             **request_kwargs: Service-specific request parameters
         """
         logger.info(
-            f"Starting closed-loop workload: {concurrent_users} users, {duration_seconds}s, service={self.service_type}"
+            f"[Node {self.node_id}] Starting closed-loop workload: "
+            f"{concurrent_users} users, {duration_seconds}s, service={self.service_type}"
         )
 
         result = WorkloadResult()
         result.start_time = datetime.now()
+        result.node_id = self.node_id
+        result.hostname = self.hostname
 
         end_time = time.time() + duration_seconds
 
@@ -578,7 +595,10 @@ class WorkloadGenerator:
 
         result.end_time = datetime.now()
 
-        logger.info(f"Closed-loop workload completed: {result.total_requests} requests")
+        logger.info(
+            f"[Node {self.node_id}] Closed-loop workload completed: "
+            f"{result.total_requests} requests"
+        )
         return result
 
     def run_open_loop(
@@ -593,11 +613,14 @@ class WorkloadGenerator:
             **request_kwargs: Service-specific request parameters
         """
         logger.info(
-            f"Starting open-loop workload: {requests_per_second} RPS, {duration_seconds}s, service={self.service_type}"
+            f"[Node {self.node_id}] Starting open-loop workload: "
+            f"{requests_per_second} RPS, {duration_seconds}s, service={self.service_type}"
         )
 
         result = WorkloadResult()
         result.start_time = datetime.now()
+        result.node_id = self.node_id
+        result.hostname = self.hostname
 
         interval = 1.0 / requests_per_second
         end_time = time.time() + duration_seconds
@@ -619,7 +642,10 @@ class WorkloadGenerator:
 
         result.end_time = datetime.now()
 
-        logger.info(f"Open-loop workload completed: {result.total_requests} requests")
+        logger.info(
+            f"[Node {self.node_id}] Open-loop workload completed: "
+            f"{result.total_requests} requests"
+        )
         return result
 
     def _send_service_request(self, **kwargs) -> Tuple[bool, float, Optional[str]]:
@@ -653,7 +679,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Multi-service benchmark workload generator"
+        description="Multi-service benchmark workload generator with multinode support"
     )
     parser.add_argument("--endpoint", required=True, help="Target endpoint URL")
     parser.add_argument(
@@ -682,8 +708,32 @@ def main():
         help="Qdrant operation type",
     )
     parser.add_argument("--output", help="Output file for results (JSON)")
+    parser.add_argument(
+        "--node-id",
+        type=int,
+        help="Node ID (automatically set from SLURM_PROCID if not provided)",
+    )
 
     args = parser.parse_args()
+
+    # ========================================================================
+    # SEED RANDOMICO PER OGNI NODO
+    # ========================================================================
+    # Determina il Node ID (da argomento o variabile d'ambiente)
+    current_node_id = (
+        args.node_id if args.node_id is not None 
+        else int(os.getenv("SLURM_PROCID", "0"))
+    )
+    
+    # IMPORTANTE: Varia il seed in base al nodo!
+    # Altrimenti tutti i nodi generano gli stessi numeri casuali.
+    seed_value = int(time.time()) + current_node_id
+    logger.info(
+        f"[Node {current_node_id}] Initializing random seed: {seed_value}"
+    )
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+    # ========================================================================
 
     # Initialize generator
     service_kwargs = {}
@@ -696,21 +746,22 @@ def main():
     generator = WorkloadGenerator(
         target_endpoint=args.endpoint,
         service_type=args.service_type,
+        node_id=args.node_id,
         **service_kwargs,
     )
 
     # Test connection
-    print("Testing connection to target endpoint...")
+    print(f"[Node {generator.node_id}] Testing connection to target endpoint...")
     success, message = generator.test_connection()
-    print(f"{'✓' if success else '✗'} {message}")
+    print(f"[Node {generator.node_id}] {'✓' if success else '✗'} {message}")
 
     if not success:
-        print("\nError: Cannot connect to target endpoint")
+        print(f"\n[Node {generator.node_id}] Error: Cannot connect to target endpoint")
         return 1
 
-    print("\n" + "=" * 60)
-    print("STARTING BENCHMARK")
-    print("=" * 60)
+    print(f"\n[Node {generator.node_id}] " + "=" * 60)
+    print(f"[Node {generator.node_id}] STARTING BENCHMARK")
+    print(f"[Node {generator.node_id}] " + "=" * 60)
 
     # Prepare request kwargs
     request_kwargs = {"prompt_length": args.prompt_length}
@@ -727,7 +778,9 @@ def main():
         )
     else:  # open-loop
         if not args.requests_per_second:
-            print("Error: --requests-per-second required for open-loop pattern")
+            print(
+                f"[Node {generator.node_id}] Error: --requests-per-second required for open-loop pattern"
+            )
             return 1
 
         result = generator.run_open_loop(
@@ -740,27 +793,29 @@ def main():
     metrics = result.get_metrics()
 
     # Print results
-    print("\n" + "=" * 60)
-    print("BENCHMARK RESULTS")
-    print("=" * 60)
-    print(f"Service Type:        {args.service_type}")
-    print(f"Total Requests:      {metrics['total_requests']}")
-    print(f"Successful:          {metrics['successful_requests']}")
-    print(f"Failed:              {metrics['failed_requests']}")
-    print(f"Success Rate:        {metrics['success_rate']:.2%}")
-    print(f"Duration:            {metrics['duration_seconds']:.2f}s")
-    print(f"Throughput:          {metrics['throughput_rps']:.2f} req/s")
+    print(f"\n[Node {generator.node_id}] " + "=" * 60)
+    print(f"[Node {generator.node_id}] BENCHMARK RESULTS")
+    print(f"[Node {generator.node_id}] " + "=" * 60)
+    print(f"[Node {generator.node_id}] Node ID:             {metrics['node_id']}")
+    print(f"[Node {generator.node_id}] Hostname:            {metrics['hostname']}")
+    print(f"[Node {generator.node_id}] Service Type:        {args.service_type}")
+    print(f"[Node {generator.node_id}] Total Requests:      {metrics['total_requests']}")
+    print(f"[Node {generator.node_id}] Successful:          {metrics['successful_requests']}")
+    print(f"[Node {generator.node_id}] Failed:              {metrics['failed_requests']}")
+    print(f"[Node {generator.node_id}] Success Rate:        {metrics['success_rate']:.2%}")
+    print(f"[Node {generator.node_id}] Duration:            {metrics['duration_seconds']:.2f}s")
+    print(f"[Node {generator.node_id}] Throughput:          {metrics['throughput_rps']:.2f} req/s")
 
     if "latency_mean" in metrics:
-        print(f"\nLatency Statistics (seconds):")
-        print(f"  Min:     {metrics['latency_min']:.3f}")
-        print(f"  Mean:    {metrics['latency_mean']:.3f}")
-        print(f"  Median:  {metrics['latency_median']:.3f}")
-        print(f"  P95:     {metrics['latency_p95']:.3f}")
-        print(f"  P99:     {metrics['latency_p99']:.3f}")
-        print(f"  Max:     {metrics['latency_max']:.3f}")
+        print(f"\n[Node {generator.node_id}] Latency Statistics (seconds):")
+        print(f"[Node {generator.node_id}]   Min:     {metrics['latency_min']:.3f}")
+        print(f"[Node {generator.node_id}]   Mean:    {metrics['latency_mean']:.3f}")
+        print(f"[Node {generator.node_id}]   Median:  {metrics['latency_median']:.3f}")
+        print(f"[Node {generator.node_id}]   P95:     {metrics['latency_p95']:.3f}")
+        print(f"[Node {generator.node_id}]   P99:     {metrics['latency_p99']:.3f}")
+        print(f"[Node {generator.node_id}]   Max:     {metrics['latency_max']:.3f}")
 
-    print("=" * 60)
+    print(f"[Node {generator.node_id}] " + "=" * 60)
 
     # Save to file if requested
     if args.output:
@@ -773,7 +828,7 @@ def main():
         with open(args.output, "w") as f:
             json.dump(output_data, f, indent=2)
 
-        print(f"\nResults saved to: {args.output}")
+        print(f"\n[Node {generator.node_id}] Results saved to: {args.output}")
 
     return 0
 
