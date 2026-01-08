@@ -77,12 +77,15 @@ class OrchestrationSpec:
     """Orchestration specification"""
 
     mode: str = "slurm"  # local, slurm, kubernetes
+    instances: int = 1  # Number of client nodes to use (IMPORTANT for multinode)
     resources: Dict = field(default_factory=dict)
 
     def validate(self) -> bool:
         """Validate orchestration specification"""
         if self.mode not in ["local", "slurm", "kubernetes"]:
             raise ValueError(f"Unsupported orchestration mode: {self.mode}")
+        if self.instances < 1:
+            raise ValueError("instances must be at least 1")
         return True
 
 
@@ -173,6 +176,7 @@ class ClientRecipe:
             },
             "orchestration": {
                 "mode": self.orchestration.mode,
+                "instances": self.orchestration.instances,
                 "resources": self.orchestration.resources,
             },
             "output": {
@@ -223,6 +227,7 @@ class ClientRecipe:
         orch_data = data.get("orchestration", {})
         orchestration = OrchestrationSpec(
             mode=orch_data.get("mode", "slurm"),
+            instances=orch_data.get("instances", 1),  # Parse instances from YAML
             resources=orch_data.get("resources", {}),
         )
 
