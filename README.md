@@ -1,7 +1,7 @@
 # UBenchAI-Framework: Unified Benchmarking Framework for AI Factory Workloads
 ![CI Tests](https://github.com/EUMaster4HPC-SC-Team-5/UBenchAI-Framework/workflows/CI%20-%20Tests%20and%20Linting/badge.svg)
 
-![AI services benchmarking architecture](docs/demo.png)
+
 
 ## Project Overview
 UBenchAI-Framework is a modular benchmarking framework designed to evaluate the performance of AI Factory components on the MeluXina supercomputer. This project is part of the EUMaster4HPC Student Challenge 2025-2026, and was awarded as second place among 11 teams.
